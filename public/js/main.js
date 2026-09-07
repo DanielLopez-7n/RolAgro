@@ -12,8 +12,12 @@
   /** @type {{id:number, name:string, price:number, qty:number}[]} */
   const cart = [];
 
+  /** Catálogo completo en memoria, para filtrar sin volver al servidor. */
+  let allProducts = [];
+
   // --- Referencias DOM ---
   const productsGridEl = document.getElementById("products-grid");
+  const categoryFilterEl = document.getElementById("category-filter");
   const productsLoadingEl = document.getElementById("products-loading");
   const productsErrorEl = document.getElementById("products-error");
 
@@ -46,34 +50,99 @@
 
       productsLoadingEl.classList.add("d-none");
 
+      // Se guarda el catálogo completo en memoria: el filtro por categoría
+      // trabaja sobre esta lista y no vuelve a pedir datos al servidor.
+      allProducts = products;
+
       if (products.length === 0) {
         productsGridEl.innerHTML =
           '<p class="text-muted text-center">Aún no hay productos cargados.</p>';
         return;
       }
 
-      productsGridEl.innerHTML = products.map(renderProductCard).join("");
+      renderProducts(products);
 
       // El carrito puede venir de una visita anterior: se depura contra el
       // catálogo real antes de mostrarlo.
       syncCartWithCatalog(products);
-
-      // Delegación: conecta los botones "Agregar" recién insertados
-      productsGridEl.querySelectorAll(".add-to-cart").forEach((button) => {
-        button.addEventListener("click", () => {
-          addToCart({
-            id: Number(button.dataset.id),
-            name: button.dataset.name,
-            price: Number(button.dataset.price),
-          });
-        });
-      });
     } catch (err) {
       console.error("Error al cargar productos:", err);
       productsLoadingEl.classList.add("d-none");
       productsErrorEl.classList.remove("d-none");
     }
   }
+
+  /** Dibuja la grilla con la lista recibida (ya filtrada o completa). */
+  function renderProducts(list) {
+    if (list.length === 0) {
+      productsGridEl.innerHTML =
+        '<p class="text-muted text-center py-4">No hay productos en esta categoría.</p>';
+      return;
+    }
+    productsGridEl.innerHTML = list.map(renderProductCard).join("");
+  }
+
+  // Delegación: la grilla se redibuja al filtrar, así que el listener va en
+  // el contenedor y no en cada botón (evita duplicarlos en cada render).
+  productsGridEl.addEventListener("click", (event) => {
+    const button = event.target.closest(".add-to-cart");
+    if (!button) return;
+
+    addToCart({
+      id: Number(button.dataset.id),
+      name: button.dataset.name,
+      price: Number(button.dataset.price),
+    });
+  });
+
+  // ==========================================================
+  // Filtro por categoría
+  // ==========================================================
+
+  async function loadCategories() {
+    try {
+      const res = await fetch("/api/categories");
+      if (!res.ok) throw new Error("Respuesta no OK");
+      const categories = await res.json();
+
+      const buttons = [
+        { id: null, name: "Todos" },
+        ...categories,
+      ].map(
+        (cat, index) => `
+          <button
+            type="button"
+            class="btn btn-sm ${index === 0 ? "btn-success" : "btn-outline-success"} category-btn"
+            data-category="${cat.id === null ? "" : cat.id}"
+          >${cat.name}</button>`
+      );
+
+      categoryFilterEl.innerHTML = buttons.join("");
+    } catch (err) {
+      // El filtro es un extra: si falla, el catálogo completo sigue visible.
+      console.warn("No se pudieron cargar las categorías:", err);
+    }
+  }
+
+  categoryFilterEl.addEventListener("click", (event) => {
+    const button = event.target.closest(".category-btn");
+    if (!button) return;
+
+    // Estado visual: solo el botón activo va relleno.
+    categoryFilterEl.querySelectorAll(".category-btn").forEach((b) => {
+      b.classList.remove("btn-success");
+      b.classList.add("btn-outline-success");
+    });
+    button.classList.remove("btn-outline-success");
+    button.classList.add("btn-success");
+
+    const categoryId = button.dataset.category;
+    renderProducts(
+      categoryId
+        ? allProducts.filter((p) => String(p.category_id) === categoryId)
+        : allProducts
+    );
+  });
 
   function renderProductCard(product) {
     return `
@@ -368,4 +437,5 @@
 
   renderCart();
   loadProducts();
+  loadCategories();
 })();
