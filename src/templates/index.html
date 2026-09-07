@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RolAgro | Insumos Agrícolas</title>
+
+  <!-- Bootstrap 5 CSS (CDN) -->
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+  />
+  <!-- Bootstrap Icons (CDN) -->
+  <link
+    rel="stylesheet"
+    href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css"
+  />
+  <!-- Ajustes propios -->
+  <link href="/css/style.css" rel="stylesheet" />
+</head>
+<body>
+
+  <!-- ===== NAVBAR ===== -->
+  <nav class="navbar navbar-expand-lg navbar-dark sticky-top">
+    <div class="container">
+      <a class="navbar-brand fw-bold d-flex align-items-center gap-2" href="#inicio">
+        <i class="bi bi-flower1 fs-3"></i>
+        RolAgro
+      </a>
+      <!-- Grupo siempre visible: el carrito NO debe esconderse tras la
+           hamburguesa en pantallas angostas. -->
+      <div class="d-flex align-items-center gap-2 order-lg-3">
+        <button
+          class="btn btn-outline-light position-relative"
+          type="button"
+          data-bs-toggle="offcanvas"
+          data-bs-target="#carritoOffcanvas"
+          aria-controls="carritoOffcanvas"
+        >
+          <i class="bi bi-cart3 fs-5"></i>
+          Carrito
+          <span
+            id="cart-count"
+            class="badge rounded-pill bg-success position-absolute top-0 start-100 translate-middle"
+          >
+            0
+          </span>
+        </button>
+
+        <button
+          class="navbar-toggler"
+          type="button"
+          data-bs-toggle="collapse"
+          data-bs-target="#navbarMenu"
+          aria-controls="navbarMenu"
+          aria-expanded="false"
+          aria-label="Abrir menú"
+        >
+          <span class="navbar-toggler-icon"></span>
+        </button>
+      </div>
+
+      <div class="collapse navbar-collapse order-lg-2" id="navbarMenu">
+        <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+          <li class="nav-item"><a class="nav-link" href="#inicio">Inicio</a></li>
+          <li class="nav-item"><a class="nav-link" href="#catalogo">Catálogo</a></li>
+          <li class="nav-item"><a class="nav-link" href="#contacto">Contacto</a></li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ===== HERO ===== -->
+  <header id="inicio" class="hero d-flex align-items-center text-center text-white">
+    <div class="container">
+      <h1 class="display-4 fw-bold">Todo para tu campo, a un clic</h1>
+      <p class="lead mb-4">
+        Semillas, fertilizantes, herramientas y riego. Insumos agrícolas de
+        calidad, directo a tu finca.
+      </p>
+      <a href="#catalogo" class="btn btn-success btn-lg px-4">
+        Ver catálogo <i class="bi bi-arrow-down-circle ms-1"></i>
+      </a>
+    </div>
+  </header>
+
+  <!-- ===== CATÁLOGO ===== -->
+  <main class="container py-5" id="catalogo">
+    <div class="text-center mb-5">
+      <h2 class="fw-bold">Nuestro Catálogo</h2>
+      <p class="text-muted">Selección de productos destacados para tu producción</p>
+    </div>
+
+    <!-- Estado de carga -->
+    <div id="products-loading" class="text-center text-muted py-5">
+      <div class="spinner-border text-success" role="status"></div>
+      <p class="mt-3">Cargando productos...</p>
+    </div>
+
+    <!-- Estado de error -->
+    <div id="products-error" class="alert alert-danger text-center d-none" role="alert">
+      <strong>No se pudieron cargar los productos.</strong>
+      <div class="small mt-2">
+        Revisa que la base de datos esté configurada: credenciales correctas en
+        <code>.env</code> y haber ejecutado <code>npm run db:init</code>.
+        El detalle del error aparece en la terminal donde corre el servidor.
+      </div>
+    </div>
+
+    <!-- Grid de productos: se llena dinámicamente desde /api/products (js/main.js) -->
+    <div id="products-grid" class="row row-cols-1 row-cols-sm-2 row-cols-lg-3 g-4"></div>
+  </main>
+
+  <!-- ===== OFFCANVAS CARRITO ===== -->
+  <div
+    class="offcanvas offcanvas-end"
+    tabindex="-1"
+    id="carritoOffcanvas"
+    aria-labelledby="carritoOffcanvasLabel"
+  >
+    <div class="offcanvas-header">
+      <h5 class="offcanvas-title" id="carritoOffcanvasLabel">
+        <i class="bi bi-cart3"></i> Tu Carrito
+      </h5>
+      <button
+        type="button"
+        class="btn-close"
+        data-bs-dismiss="offcanvas"
+        aria-label="Cerrar"
+      ></button>
+    </div>
+    <div class="offcanvas-body d-flex flex-column">
+      <ul id="cart-items" class="list-group mb-3 flex-grow-1">
+        <li id="cart-empty" class="list-group-item text-muted text-center border-0">
+          Tu carrito está vacío. ¡Agrega algún insumo!
+        </li>
+      </ul>
+
+      <hr />
+
+      <div class="d-flex justify-content-between fw-bold fs-5 mb-3">
+        <span>Total:</span>
+        <span id="cart-total">$0</span>
+      </div>
+
+      <button class="btn btn-success btn-lg w-100" id="confirmar-pedido">
+        Confirmar Pedido
+      </button>
+      <p class="text-muted small text-center mt-2 mb-0">
+        Checkout de invitado: solo necesitarás tu nombre y teléfono.
+      </p>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: CHECKOUT DE INVITADO ===== -->
+  <div class="modal fade" id="checkoutModal" tabindex="-1" aria-labelledby="checkoutModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <form id="checkout-form">
+          <div class="modal-header">
+            <h5 class="modal-title" id="checkoutModalLabel">Confirmar Pedido</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+          </div>
+          <div class="modal-body">
+            <p class="text-muted small">
+              No pedimos registro: solo tu nombre y teléfono para contactarte
+              sobre tu pedido.
+            </p>
+
+            <div class="mb-3">
+              <label for="checkout-name" class="form-label">Nombre completo</label>
+              <input type="text" class="form-control" id="checkout-name" required />
+            </div>
+            <div class="mb-3">
+              <label for="checkout-phone" class="form-label">Teléfono</label>
+              <input type="tel" class="form-control" id="checkout-phone" required />
+            </div>
+
+            <div id="checkout-feedback" class="alert d-none" role="alert"></div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="btn btn-success" id="checkout-submit">
+              Enviar Pedido
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== FOOTER ===== -->
+  <footer id="contacto" class="text-white py-5 mt-5">
+    <div class="container text-center">
+      <h5 class="fw-bold mb-2"><i class="bi bi-flower1"></i> RolAgro</h5>
+      <p class="mb-3">Insumos agrícolas de calidad para tu producción.</p>
+      <a
+        href="#"
+        class="btn btn-outline-light btn-sm"
+        target="_blank"
+        rel="noopener"
+      >
+        <i class="bi bi-whatsapp"></i> Escríbenos por WhatsApp
+      </a>
+      <p class="small text-white-50 mt-4 mb-0">
+        &copy; 2026 RolAgro. Todos los derechos reservados.
+      </p>
+    </div>
+  </footer>
+
+  <!-- Bootstrap 5 JS bundle (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="/js/main.js"></script>
+</body>
+</html>
