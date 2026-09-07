@@ -1,0 +1,15 @@
+// Transporte de Nodemailer usando Gmail + App Password.
+// Ver .env.example para las variables necesarias.
+
+require("dotenv").config();
+const nodemailer = require("nodemailer");
+
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
+});
+
+module.exports = transporter;
