@@ -7,6 +7,8 @@
 (function () {
   "use strict";
 
+  const CART_STORAGE_KEY = "rolagro_cart";
+
   /** @type {{id:number, name:string, price:number, qty:number}[]} */
   const cart = [];
 
@@ -51,6 +53,10 @@
       }
 
       productsGridEl.innerHTML = products.map(renderProductCard).join("");
+
+      // El carrito puede venir de una visita anterior: se depura contra el
+      // catálogo real antes de mostrarlo.
+      syncCartWithCatalog(products);
 
       // Delegación: conecta los botones "Agregar" recién insertados
       productsGridEl.querySelectorAll(".add-to-cart").forEach((button) => {
@@ -98,6 +104,77 @@
   // Carrito (en memoria)
   // ==========================================================
 
+  /**
+   * Recupera el carrito guardado en el navegador.
+   * Devuelve [] si no hay nada, si el contenido está corrupto o si el
+   * navegador bloquea el almacenamiento (modo incógnito, permisos).
+   */
+  function loadCartFromStorage() {
+    try {
+      const raw = localStorage.getItem(CART_STORAGE_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      return parsed
+        .filter(
+          (item) =>
+            item &&
+            Number.isFinite(Number(item.id)) &&
+            Number(item.qty) > 0 &&
+            Number.isFinite(Number(item.price))
+        )
+        // Se normalizan los tipos: el id debe ser número para poder
+        // compararlo con el del catálogo.
+        .map((item) => ({
+          id: Number(item.id),
+          name: String(item.name || ""),
+          price: Number(item.price),
+          qty: Math.min(Math.floor(Number(item.qty)), 999),
+        }));
+    } catch (err) {
+      console.warn("No se pudo leer el carrito guardado:", err);
+      return [];
+    }
+  }
+
+  function saveCartToStorage() {
+    try {
+      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart));
+    } catch (err) {
+      console.warn("No se pudo guardar el carrito:", err);
+    }
+  }
+
+  /**
+   * Pone al día el carrito guardado contra el catálogo recién cargado:
+   * descarta productos que ya no existen y refresca nombres y precios que
+   * hayan cambiado desde la última visita.
+   *
+   * El total real lo recalcula el servidor al confirmar el pedido; esto es
+   * solo para que el cliente no vea datos viejos en pantalla.
+   */
+  function syncCartWithCatalog(products) {
+    const byId = new Map(products.map((p) => [p.id, p]));
+    let changed = false;
+
+    for (let i = cart.length - 1; i >= 0; i--) {
+      const fresh = byId.get(cart[i].id);
+      if (!fresh) {
+        cart.splice(i, 1);
+        changed = true;
+      } else if (
+        Number(fresh.price) !== cart[i].price ||
+        fresh.name !== cart[i].name
+      ) {
+        cart[i].price = Number(fresh.price);
+        cart[i].name = fresh.name;
+        changed = true;
+      }
+    }
+
+    if (changed) renderCart();
+  }
+
   function addToCart({ id, name, price }) {
     const existing = cart.find((item) => item.id === id);
     if (existing) {
@@ -108,12 +185,36 @@
     renderCart();
   }
 
+  /** Suma o resta unidades. Al llegar a 0 el producto sale del carrito. */
+  function changeQty(id, delta) {
+    const item = cart.find((entry) => entry.id === id);
+    if (!item) return;
+
+    item.qty = Math.min(item.qty + delta, 999);
+    if (item.qty <= 0) {
+      removeFromCart(id);
+      return;
+    }
+    renderCart();
+  }
+
+  function removeFromCart(id) {
+    const index = cart.findIndex((entry) => entry.id === id);
+    if (index !== -1) {
+      cart.splice(index, 1);
+      renderCart();
+    }
+  }
+
   function clearCart() {
     cart.length = 0;
     renderCart();
   }
 
   function renderCart() {
+    // Se persiste aquí para no olvidarlo en ninguna operación: todas las
+    // que modifican el carrito terminan llamando a renderCart().
+    saveCartToStorage();
     cartItemsEl.innerHTML = "";
 
     if (cart.length === 0) {
@@ -132,14 +233,34 @@
       totalQty += item.qty;
 
       const li = document.createElement("li");
-      li.className =
-        "list-group-item d-flex justify-content-between align-items-center";
+      li.className = "list-group-item";
       li.innerHTML = `
-        <div>
-          <div class="fw-semibold">${item.name}</div>
-          <small class="text-muted">${formatCOP(item.price)} x ${item.qty}</small>
+        <div class="d-flex justify-content-between align-items-start gap-2">
+          <div class="flex-grow-1">
+            <div class="fw-semibold small">${item.name}</div>
+            <small class="text-muted">${formatCOP(item.price)} c/u</small>
+          </div>
+          <button
+            class="btn btn-sm btn-link text-danger p-0 cart-remove"
+            data-id="${item.id}"
+            title="Quitar del carrito"
+            aria-label="Quitar ${item.name} del carrito"
+          >
+            <i class="bi bi-trash"></i>
+          </button>
         </div>
-        <span class="fw-bold">${formatCOP(subtotal)}</span>
+        <div class="d-flex justify-content-between align-items-center mt-2">
+          <div class="btn-group btn-group-sm" role="group" aria-label="Cantidad">
+            <button class="btn btn-outline-secondary cart-decrease" data-id="${item.id}" aria-label="Quitar una unidad">
+              <i class="bi bi-dash"></i>
+            </button>
+            <span class="btn btn-outline-secondary disabled px-3">${item.qty}</span>
+            <button class="btn btn-outline-secondary cart-increase" data-id="${item.id}" aria-label="Agregar una unidad">
+              <i class="bi bi-plus"></i>
+            </button>
+          </div>
+          <span class="fw-bold">${formatCOP(subtotal)}</span>
+        </div>
       `;
       cartItemsEl.appendChild(li);
     });
@@ -147,6 +268,18 @@
     cartTotalEl.textContent = formatCOP(total);
     cartCountEl.textContent = String(totalQty);
   }
+
+  // Delegación: la lista se redibuja entera en cada cambio, así que el
+  // listener va en el contenedor y no en cada botón.
+  cartItemsEl.addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-id]");
+    if (!button) return;
+
+    const id = Number(button.dataset.id);
+    if (button.classList.contains("cart-increase")) changeQty(id, 1);
+    else if (button.classList.contains("cart-decrease")) changeQty(id, -1);
+    else if (button.classList.contains("cart-remove")) removeFromCart(id);
+  });
 
   // ==========================================================
   // Checkout de invitado (modal -> POST /api/orders)
@@ -229,6 +362,9 @@
   // ==========================================================
   // Init
   // ==========================================================
+
+  // Restaura el carrito de la visita anterior antes del primer render.
+  cart.push(...loadCartFromStorage());
 
   renderCart();
   loadProducts();
