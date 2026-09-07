@@ -5,6 +5,20 @@ const formatCOP = (value) =>
   "$" + Number(value).toLocaleString("es-CO", { maximumFractionDigits: 0 });
 
 /**
+ * Escapa caracteres con significado en HTML.
+ * El nombre y el teléfono los escribe el cliente en el formulario, así que
+ * NUNCA deben insertarse crudos en el HTML del correo: alguien podría enviar
+ * etiquetas o scripts que se inyectarían en el mensaje que recibe la empresa.
+ */
+const escapeHtml = (value) =>
+  String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+/**
  * Construye el HTML del correo con los datos del pedido.
  * Nota: todavía no existe un archivo de logo real de RolAgro, así que se usa
  * un encabezado con texto/estilo como placeholder. Cuando exista un logo
@@ -17,7 +31,7 @@ function buildOrderEmailHtml({ name, phone, items, total }) {
     .map(
       (item) => `
         <tr>
-          <td style="padding:8px;border-bottom:1px solid #e0e0e0;">${item.name}</td>
+          <td style="padding:8px;border-bottom:1px solid #e0e0e0;">${escapeHtml(item.name)}</td>
           <td style="padding:8px;border-bottom:1px solid #e0e0e0;text-align:center;">${item.qty}</td>
           <td style="padding:8px;border-bottom:1px solid #e0e0e0;text-align:right;">${formatCOP(item.price)}</td>
           <td style="padding:8px;border-bottom:1px solid #e0e0e0;text-align:right;">${formatCOP(item.subtotal)}</td>
@@ -33,8 +47,8 @@ function buildOrderEmailHtml({ name, phone, items, total }) {
     </div>
     <div style="padding:20px;border:1px solid #e0e0e0;border-top:none;">
       <h2 style="font-size:16px;color:#1b4d1e;">Datos del cliente</h2>
-      <p style="margin:4px 0;"><strong>Nombre:</strong> ${name}</p>
-      <p style="margin:4px 0 16px;"><strong>Teléfono:</strong> ${phone}</p>
+      <p style="margin:4px 0;"><strong>Nombre:</strong> ${escapeHtml(name)}</p>
+      <p style="margin:4px 0 16px;"><strong>Teléfono:</strong> ${escapeHtml(phone)}</p>
 
       <h2 style="font-size:16px;color:#1b4d1e;">Detalle del pedido</h2>
       <table style="width:100%;border-collapse:collapse;font-size:14px;">
@@ -73,14 +87,35 @@ async function createOrder(req, res) {
   try {
     const { name, phone, items } = req.body || {};
 
-    if (!name || !String(name).trim()) {
+    // Se quitan saltos de línea: además de ensuciar el correo, podrían
+    // usarse para inyectar cabeceras en el asunto del mensaje.
+    const cleanName = String(name || "").replace(/[\r\n]/g, " ").trim();
+    const cleanPhone = String(phone || "").replace(/[\r\n]/g, " ").trim();
+
+    if (!cleanName) {
       return res.status(400).json({ error: "El nombre es requerido." });
     }
-    if (!phone || !String(phone).trim()) {
+    if (cleanName.length > 100) {
+      return res
+        .status(400)
+        .json({ error: "El nombre no puede superar los 100 caracteres." });
+    }
+    if (!cleanPhone) {
       return res.status(400).json({ error: "El teléfono es requerido." });
+    }
+    // Acepta dígitos, espacios, guiones, paréntesis y un "+" inicial.
+    if (!/^\+?[\d\s\-()]{7,20}$/.test(cleanPhone)) {
+      return res.status(400).json({
+        error: "El teléfono no es válido. Debe tener entre 7 y 20 dígitos.",
+      });
     }
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: "El carrito está vacío." });
+    }
+    if (items.length > 50) {
+      return res
+        .status(400)
+        .json({ error: "El pedido tiene demasiados productos distintos." });
     }
 
     // Se vuelven a consultar los precios reales en MySQL: nunca se confía
@@ -103,7 +138,10 @@ async function createOrder(req, res) {
     let total = 0;
     const orderItems = items.map((item) => {
       const product = productsById.get(item.productId);
-      const qty = Number(item.qty) > 0 ? Number(item.qty) : 1;
+      // La cantidad se acota entre 1 y 999: evita pedidos con cantidades
+      // absurdas o negativas enviadas manipulando la petición.
+      const rawQty = Math.floor(Number(item.qty));
+      const qty = Number.isFinite(rawQty) ? Math.min(Math.max(rawQty, 1), 999) : 1;
       const subtotal = Number(product.price) * qty;
       total += subtotal;
       return {
@@ -114,7 +152,12 @@ async function createOrder(req, res) {
       };
     });
 
-    const orderData = { name: String(name).trim(), phone: String(phone).trim(), items: orderItems, total };
+    const orderData = {
+      name: cleanName,
+      phone: cleanPhone,
+      items: orderItems,
+      total,
+    };
 
     await transporter.sendMail({
       from: process.env.SMTP_USER,
