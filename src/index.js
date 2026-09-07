@@ -1,12 +1,17 @@
 require("dotenv").config();
 const path = require("path");
 const express = require("express");
+const morgan = require("morgan");
 
 const productsRoutes = require("./routes/products.routes");
 const ordersRoutes = require("./routes/orders.routes");
 const { apiLimiter } = require("./middlewares/rateLimiter");
 
 const app = express();
+
+// Registro de peticiones en consola: "dev" es compacto y coloreado para
+// desarrollo; "combined" da el formato estándar de servidor para producción.
+app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
 
 // Se acota el tamaño del cuerpo: un pedido legítimo son unos pocos kilobytes.
 app.use(express.json({ limit: "100kb" }));

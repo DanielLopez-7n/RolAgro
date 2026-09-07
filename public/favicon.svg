@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="12" fill="#1b4d1e"/>
+  <!-- Hoja -->
+  <path d="M32 50C32 50 14 42 14 26C14 18 20 12 28 12C34 12 38 15 40 19C42 15 46 12 52 12C52 12 50 40 32 50Z"
+        fill="#7cc47f"/>
+  <!-- Nervadura -->
+  <path d="M32 50C32 42 36 30 46 20" stroke="#1b4d1e" stroke-width="3"
+        stroke-linecap="round" fill="none"/>
+</svg>
