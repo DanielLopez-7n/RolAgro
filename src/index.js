@@ -4,6 +4,7 @@ const express = require("express");
 const morgan = require("morgan");
 const helmet = require("helmet");
 
+const checkEnv = require("./config/env");
 const pool = require("./config/db");
 const productsRoutes = require("./routes/products.routes");
 const ordersRoutes = require("./routes/orders.routes");
@@ -11,6 +12,10 @@ const adminRoutes = require("./routes/admin.routes");
 const basicAuth = require("./middlewares/basicAuth");
 const { apiLimiter, adminLimiter } = require("./middlewares/rateLimiter");
 const { notFound, errorHandler } = require("./middlewares/errorHandler");
+
+// Antes de levantar nada: si el .env del servidor está incompleto, en
+// producción esto corta el arranque. Ver src/config/env.js.
+checkEnv();
 
 const app = express();
 
@@ -32,7 +37,11 @@ app.use(
         scriptSrc: ["'self'", "https://cdn.jsdelivr.net"],
         styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
         fontSrc: ["'self'", "https://cdn.jsdelivr.net", "data:"],
-        imgSrc: ["'self'", "data:"],
+        // Las fotos de producto son URLs que se pegan a mano en el panel
+        // (image_url), de cualquier host: limitar esto a 'self' dejaría el
+        // catálogo sin imágenes. Se permite cualquier origen HTTPS, pero no
+        // http:, para no romper el candado del navegador con contenido mixto.
+        imgSrc: ["'self'", "data:", "https:"],
         connectSrc: ["'self'"],
       },
     },

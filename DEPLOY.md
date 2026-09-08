@@ -26,6 +26,9 @@ Ya están en el repo, listos para producción:
 - `GET /health` para que PM2/un monitor externo confirme que el proceso vive.
 - Apagado controlado (`SIGTERM`/`SIGINT`) que cierra el pool de MySQL antes
   de salir.
+- Validación del `.env` al arrancar (`src/config/env.js`): en producción
+  corta el arranque si falta una variable crítica o quedó un valor de
+  ejemplo.
 - `ecosystem.config.js` (PM2), `deploy/nginx.rolagro.conf`, `deploy/backup-db.sh`.
 
 ## Fase 2 — Provisionar el VPS
@@ -126,6 +129,13 @@ desarrollo:
 - `WHATSAPP_NUMBER`
 - `PORT=3000` (Nginx lo expone hacia afuera; no hace falta abrirlo en el
   firewall)
+
+Con `NODE_ENV=production`, la app **no arranca** si falta alguna de esas
+variables, si tienen un formato inválido, o si quedó algún valor de ejemplo
+copiado de `.env.example` (ver `src/config/env.js`). Es a propósito: un
+`.env` a medias no se nota hasta que un cliente hace un pedido y el correo
+nunca llega. Si PM2 muestra el proceso como `errored`, `pm2 logs rolagro`
+lista exactamente qué variable falta.
 
 ### 3.3 Instalar dependencias e inicializar la base
 
