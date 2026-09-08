@@ -13,6 +13,11 @@ const pool = mysql.createPool({
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
+  // Solo hace falta si MySQL vive en otro host que exige TLS (un servicio
+  // gestionado, por ejemplo). Con MySQL en el mismo VPS no aplica.
+  ...(process.env.DB_SSL === "true"
+    ? { ssl: { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== "false" } }
+    : {}),
 });
 
 module.exports = pool;
