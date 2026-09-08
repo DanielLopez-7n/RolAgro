@@ -8,6 +8,7 @@ const ordersRoutes = require("./routes/orders.routes");
 const adminRoutes = require("./routes/admin.routes");
 const basicAuth = require("./middlewares/basicAuth");
 const { apiLimiter, adminLimiter } = require("./middlewares/rateLimiter");
+const { notFound, errorHandler } = require("./middlewares/errorHandler");
 
 const app = express();
 
@@ -40,23 +41,10 @@ app.use("/api", apiLimiter);
 app.use("/api", productsRoutes);
 app.use("/api", ordersRoutes);
 
-// Nada coincidió: la API responde JSON (el frontend siempre espera JSON) y el
-// resto, texto plano.
-app.use((req, res) => {
-  if (req.path.startsWith("/api") || req.path.startsWith("/admin/api")) {
-    return res.status(404).json({ error: "Recurso no encontrado." });
-  }
-  res.status(404).type("text").send("404 - Página no encontrada");
-});
-
-// Red de seguridad: cualquier error no capturado por un controlador termina
-// aquí. El detalle queda en la consola del servidor y el cliente solo recibe
-// un mensaje genérico, sin stack traces ni datos internos.
-app.use((err, req, res, next) => {
-  console.error("Error no controlado:", err);
-  if (res.headersSent) return next(err);
-  res.status(500).json({ error: "Ocurrió un error inesperado." });
-});
+// Ninguna ruta coincidió, y red de seguridad para cualquier error que llegue
+// desde un controlador vía next(err). Ver src/middlewares/errorHandler.js.
+app.use(notFound);
+app.use(errorHandler);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
