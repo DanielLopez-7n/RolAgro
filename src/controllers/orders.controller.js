@@ -71,6 +71,49 @@ function buildOrderEmailHtml({ name, phone, items, total }) {
 }
 
 /**
+ * Guarda el pedido y su detalle en MySQL dentro de una transacción: o queda
+ * la cabecera con todos sus items, o no queda nada. Devuelve el id del pedido.
+ */
+async function saveOrder({ name, phone, items, total }) {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const [result] = await connection.query(
+      "INSERT INTO orders (customer_name, customer_phone, total) VALUES (?, ?, ?)",
+      [name, phone, total]
+    );
+    const orderId = result.insertId;
+
+    // Un solo INSERT con todos los items en lugar de uno por producto.
+    const placeholders = items.map(() => "(?, ?, ?, ?, ?, ?)").join(", ");
+    const values = items.flatMap((item) => [
+      orderId,
+      item.productId,
+      item.name,
+      item.price,
+      item.qty,
+      item.subtotal,
+    ]);
+
+    await connection.query(
+      `INSERT INTO order_items
+         (order_id, product_id, product_name, unit_price, qty, subtotal)
+       VALUES ${placeholders}`,
+      values
+    );
+
+    await connection.commit();
+    return orderId;
+  } catch (err) {
+    await connection.rollback();
+    throw err;
+  } finally {
+    connection.release();
+  }
+}
+
+/**
  * Arma el texto del mensaje de WhatsApp (URL-encoded por wa.me).
  */
 function buildWhatsappMessage({ name, items, total }) {
@@ -145,6 +188,7 @@ async function createOrder(req, res) {
       const subtotal = Number(product.price) * qty;
       total += subtotal;
       return {
+        productId: product.id,
         name: product.name,
         price: Number(product.price),
         qty,
@@ -159,12 +203,29 @@ async function createOrder(req, res) {
       total,
     };
 
-    await transporter.sendMail({
-      from: process.env.SMTP_USER,
-      to: process.env.MAIL_TO,
-      subject: `Nuevo pedido de ${orderData.name} - RolAgro`,
-      html: buildOrderEmailHtml(orderData),
-    });
+    // El pedido se guarda ANTES de notificar. Si esto falla no hay nada que
+    // ofrecerle al cliente, así que sí se corta con un 500.
+    const orderId = await saveOrder(orderData);
+
+    // El correo es una notificación, no la venta: si falla, el pedido ya está
+    // guardado y el enlace de WhatsApp sigue sirviendo, así que se registra el
+    // problema (queda como 'fallido' en la tabla) y se responde con éxito.
+    try {
+      await transporter.sendMail({
+        from: process.env.SMTP_USER,
+        to: process.env.MAIL_TO,
+        subject: `Nuevo pedido #${orderId} de ${orderData.name} - RolAgro`,
+        html: buildOrderEmailHtml(orderData),
+      });
+      await pool.query("UPDATE orders SET email_status = 'enviado' WHERE id = ?", [
+        orderId,
+      ]);
+    } catch (mailErr) {
+      console.error(
+        `El pedido #${orderId} se guardó, pero falló el envío del correo:`,
+        mailErr
+      );
+    }
 
     const whatsappNumber = process.env.WHATSAPP_NUMBER || "";
     const whatsappMessage = buildWhatsappMessage(orderData);
@@ -172,7 +233,7 @@ async function createOrder(req, res) {
       whatsappMessage
     )}`;
 
-    res.json({ success: true, total, whatsappLink });
+    res.json({ success: true, orderId, total, whatsappLink });
   } catch (err) {
     console.error("Error al procesar el pedido:", err);
     res
