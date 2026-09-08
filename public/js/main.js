@@ -38,6 +38,20 @@
   const formatCOP = (value) =>
     "$" + Number(value).toLocaleString("es-CO", { maximumFractionDigits: 0 });
 
+  /**
+   * Escapa caracteres con significado en HTML.
+   * Los nombres y descripciones vienen de la base de datos y se insertan con
+   * innerHTML: sin escapar, un producto llamado con comillas rompería el
+   * marcado, y uno con etiquetas podría inyectar código en la página.
+   */
+  const escapeHtml = (value) =>
+    String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+
   // ==========================================================
   // Catálogo: carga de productos desde la API
   // ==========================================================
@@ -88,10 +102,15 @@
     const button = event.target.closest(".add-to-cart");
     if (!button) return;
 
+    // Nombre y precio se toman del catálogo en memoria, no de atributos del
+    // botón: una sola fuente de verdad y nada que escapar en el HTML.
+    const product = allProducts.find((p) => p.id === Number(button.dataset.id));
+    if (!product) return;
+
     addToCart({
-      id: Number(button.dataset.id),
-      name: button.dataset.name,
-      price: Number(button.dataset.price),
+      id: product.id,
+      name: product.name,
+      price: Number(product.price),
     });
   });
 
@@ -113,8 +132,8 @@
           <button
             type="button"
             class="btn btn-sm ${index === 0 ? "btn-success" : "btn-outline-success"} category-btn"
-            data-category="${cat.id === null ? "" : cat.id}"
-          >${cat.name}</button>`
+            data-category="${cat.id === null ? "" : Number(cat.id)}"
+          >${escapeHtml(cat.name)}</button>`
       );
 
       categoryFilterEl.innerHTML = buttons.join("");
@@ -145,21 +164,20 @@
   });
 
   function renderProductCard(product) {
+    const name = escapeHtml(product.name);
     return `
       <div class="col">
         <div class="card h-100 product-card shadow-sm">
-          <img src="${product.image_url}" class="card-img-top" alt="${product.name}" />
+          <img src="${escapeHtml(product.image_url)}" class="card-img-top" alt="${name}" />
           <div class="card-body d-flex flex-column">
-            <span class="badge bg-success-subtle text-success-emphasis mb-2 align-self-start">${product.category_name}</span>
-            <h5 class="card-title">${product.name}</h5>
-            <p class="card-text text-muted small flex-grow-1">${product.description || ""}</p>
+            <span class="badge bg-success-subtle text-success-emphasis mb-2 align-self-start">${escapeHtml(product.category_name)}</span>
+            <h5 class="card-title">${name}</h5>
+            <p class="card-text text-muted small flex-grow-1">${escapeHtml(product.description || "")}</p>
             <div class="d-flex justify-content-between align-items-center mt-2">
               <span class="fw-bold text-success fs-5">${formatCOP(product.price)}</span>
               <button
                 class="btn btn-sm btn-success add-to-cart"
-                data-id="${product.id}"
-                data-name="${product.name}"
-                data-price="${product.price}"
+                data-id="${Number(product.id)}"
               >
                 <i class="bi bi-cart-plus"></i> Agregar
               </button>
@@ -301,19 +319,20 @@
       total += subtotal;
       totalQty += item.qty;
 
+      const name = escapeHtml(item.name);
       const li = document.createElement("li");
       li.className = "list-group-item";
       li.innerHTML = `
         <div class="d-flex justify-content-between align-items-start gap-2">
           <div class="flex-grow-1">
-            <div class="fw-semibold small">${item.name}</div>
+            <div class="fw-semibold small">${name}</div>
             <small class="text-muted">${formatCOP(item.price)} c/u</small>
           </div>
           <button
             class="btn btn-sm btn-link text-danger p-0 cart-remove"
             data-id="${item.id}"
             title="Quitar del carrito"
-            aria-label="Quitar ${item.name} del carrito"
+            aria-label="Quitar ${name} del carrito"
           >
             <i class="bi bi-trash"></i>
           </button>
