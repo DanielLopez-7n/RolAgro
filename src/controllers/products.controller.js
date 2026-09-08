@@ -41,4 +41,12 @@ async function getProducts(req, res) {
   }
 }
 
-module.exports = { getCategories, getProducts };
+// GET /api/config
+// Configuración pública que el frontend necesita conocer. Solo se expone el
+// número de WhatsApp: el resto del .env (credenciales de correo y de base de
+// datos) nunca debe salir del servidor.
+function getPublicConfig(req, res) {
+  res.json({ whatsappNumber: process.env.WHATSAPP_NUMBER || "" });
+}
+
+module.exports = { getCategories, getProducts, getPublicConfig };
