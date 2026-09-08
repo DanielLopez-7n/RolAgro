@@ -448,6 +448,33 @@
   });
 
   // ==========================================================
+  // Contacto: enlace de WhatsApp del pie de página
+  // ==========================================================
+
+  async function loadWhatsappLink() {
+    const linkEl = document.getElementById("footer-whatsapp");
+    if (!linkEl) return;
+
+    try {
+      const res = await fetch("/api/config");
+      if (!res.ok) throw new Error("Respuesta no OK");
+      const { whatsappNumber } = await res.json();
+
+      // Sin número configurado el botón sigue oculto: mejor no mostrarlo que
+      // llevar a un chat inexistente.
+      if (!whatsappNumber) return;
+
+      const message = encodeURIComponent(
+        "Hola RolAgro, quisiera hacer una consulta."
+      );
+      linkEl.href = `https://wa.me/${whatsappNumber}?text=${message}`;
+      linkEl.classList.remove("d-none");
+    } catch (err) {
+      console.warn("No se pudo cargar el contacto de WhatsApp:", err);
+    }
+  }
+
+  // ==========================================================
   // Init
   // ==========================================================
 
@@ -457,4 +484,5 @@
   renderCart();
   loadProducts();
   loadCategories();
+  loadWhatsappLink();
 })();
