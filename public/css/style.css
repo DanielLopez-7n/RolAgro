@@ -67,3 +67,8 @@ body {
 footer {
   background-color: var(--rolagro-earth);
 }
+
+/* ----- Panel de administración ----- */
+.order-row {
+  cursor: pointer;
+}
