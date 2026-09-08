@@ -203,4 +203,6 @@ async function findRecent(limit = MAX_RECENT_ORDERS) {
   return orders.map((order) => ({ ...order, items: itemsByOrder.get(order.id) }));
 }
 
-module.exports = { placeOrder, findRecent };
+// validateCustomer se exporta para poder probarlo de forma aislada: es la
+// frontera donde se filtran los datos que escribe el cliente.
+module.exports = { placeOrder, findRecent, validateCustomer };

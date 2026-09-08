@@ -29,6 +29,10 @@ Ya están en el repo, listos para producción:
 - Validación del `.env` al arrancar (`src/config/env.js`): en producción
   corta el arranque si falta una variable crítica o quedó un valor de
   ejemplo.
+- Tests de humo (`npm test`, sin dependencias externas ni base de datos):
+  validación del checkout, escape de HTML del correo, enlace de WhatsApp,
+  chequeo del `.env` y las rutas que no tocan MySQL (salud, panel con y sin
+  credenciales, 404, cabeceras de seguridad).
 - `ecosystem.config.js` (PM2), `deploy/nginx.rolagro.conf`, `deploy/backup-db.sh`.
 
 ## Fase 2 — Provisionar el VPS
@@ -224,9 +228,14 @@ compartir el link funcionen). Reemplazar por el dominio real y redesplegar.
   $ cd RolAgro
   $ git pull origin main
   $ npm ci --omit=dev
-  $ npm run db:init      # solo si hubo cambios de schema/seed
-  $ pm2 reload rolagro   # reinicio sin downtime
+  $ npm test              # si falla, no sigas: el sitio en vivo queda como está
+  $ npm run db:init       # solo si hubo cambios de schema/seed
+  $ pm2 reload rolagro    # reinicio sin downtime
   ```
+
+  Los tests corren sin base de datos, sin red y sin devDependencies (usan
+  el corredor propio de Node), así que se pueden ejecutar tal cual en el
+  servidor antes de recargar.
 
   Si más adelante conviene automatizar esto con GitHub Actions (deploy por
   SSH al hacer push a `main`), se arma aparte cuando el flujo manual esté

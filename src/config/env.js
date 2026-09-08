@@ -56,14 +56,16 @@ const PLACEHOLDERS = new Set([
 ]);
 
 /**
- * Revisa la configuración. En producción corta el arranque si algo falta;
- * en desarrollo deja seguir con una advertencia.
+ * Devuelve la lista de problemas de configuración, sin efectos secundarios.
+ *
+ * Está separada de checkEnv para poder probarla: recibe el entorno como
+ * parámetro en vez de leer process.env directamente.
  */
-function checkEnv() {
+function findProblems(env = process.env) {
   const problems = [];
 
   for (const { name, detail, isValid } of CHECKS) {
-    const value = (process.env[name] || "").trim();
+    const value = (env[name] || "").trim();
 
     if (!value) {
       problems.push(`${name} falta (${detail}).`);
@@ -75,6 +77,16 @@ function checkEnv() {
       );
     }
   }
+
+  return problems;
+}
+
+/**
+ * Revisa la configuración. En producción corta el arranque si algo falta;
+ * en desarrollo deja seguir con una advertencia.
+ */
+function checkEnv() {
+  const problems = findProblems();
 
   if (problems.length === 0) return;
 
@@ -93,4 +105,4 @@ function checkEnv() {
   );
 }
 
-module.exports = checkEnv;
+module.exports = { checkEnv, findProblems };
