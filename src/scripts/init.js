@@ -20,6 +20,49 @@ const {
   DB_NAME = "rolagro_db",
 } = process.env;
 
+/**
+ * Avisa si la base ya existía y le faltan las tablas/columnas agregadas
+ * después de su creación.
+ *
+ * schema.sql usa CREATE TABLE IF NOT EXISTS, así que sobre una base vieja
+ * este script no falla: simplemente no hace nada, y la app arranca bien
+ * pero revienta en la primera consulta con "Unknown column 'p.published'".
+ * Ese error no dice en ningún lado que lo que falta es correr la migración,
+ * así que se detecta acá.
+ */
+async function warnIfMigrationPending(connection, dbName) {
+  const [columns] = await connection.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'products'`,
+    [dbName]
+  );
+  const [tables] = await connection.query(
+    `SELECT TABLE_NAME FROM information_schema.TABLES
+     WHERE TABLE_SCHEMA = ? AND TABLE_NAME IN ('marcas', 'product_batches')`,
+    [dbName]
+  );
+
+  const columnNames = new Set(columns.map((c) => c.COLUMN_NAME));
+  const tableNames = new Set(tables.map((t) => t.TABLE_NAME));
+
+  const missing = [
+    ...["sku", "marca_id", "published"]
+      .filter((name) => !columnNames.has(name))
+      .map((name) => `products.${name}`),
+    ...["marcas", "product_batches"].filter((name) => !tableNames.has(name)),
+  ];
+
+  if (missing.length === 0) return;
+
+  console.warn(
+    `\n⚠️  La base "${dbName}" ya existía y le falta: ${missing.join(", ")}.\n` +
+      "   schema.sql solo crea tablas nuevas, no modifica una tabla que ya existe,\n" +
+      "   así que hay que correr la migración una vez:\n\n" +
+      `     mysql -u USUARIO -p ${dbName} < data/migrations/2026-09-09_marcas_y_sku.sql\n\n` +
+      "   Sin eso, el panel va a fallar con errores del tipo \"Unknown column\".\n"
+  );
+}
+
 async function run() {
   // 1) Conexión sin base de datos específica, para poder crearla si falta.
   const connection = await mysql.createConnection({
@@ -43,6 +86,8 @@ async function run() {
     );
     console.log("Aplicando schema.sql...");
     await connection.query(schemaSql);
+
+    await warnIfMigrationPending(connection, DB_NAME);
 
     const [[{ total }]] = await connection.query(
       "SELECT COUNT(*) AS total FROM products"
