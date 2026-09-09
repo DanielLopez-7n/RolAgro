@@ -17,7 +17,7 @@ const {
   DB_PORT = 3306,
   DB_USER = "root",
   DB_PASSWORD = "",
-  DB_NAME = "rolagro",
+  DB_NAME = "rolagro_db",
 } = process.env;
 
 async function run() {

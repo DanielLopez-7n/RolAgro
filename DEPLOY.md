@@ -82,9 +82,9 @@ producción):
 
 ```
 $ sudo mysql
-mysql> CREATE DATABASE rolagro CHARACTER SET utf8mb4;
+mysql> CREATE DATABASE rolagro_db CHARACTER SET utf8mb4;
 mysql> CREATE USER 'rolagro'@'localhost' IDENTIFIED BY 'UNA_CLAVE_FUERTE_Y_UNICA';
-mysql> GRANT ALL PRIVILEGES ON rolagro.* TO 'rolagro'@'localhost';
+mysql> GRANT ALL PRIVILEGES ON rolagro_db.* TO 'rolagro'@'localhost';
 mysql> FLUSH PRIVILEGES;
 mysql> EXIT;
 ```
@@ -127,7 +127,7 @@ desarrollo:
 
 - `NODE_ENV=production`
 - `DB_HOST=localhost`, `DB_USER=rolagro`, `DB_PASSWORD=` (la del paso 2.4),
-  `DB_NAME=rolagro`, `DB_SSL=false`
+  `DB_NAME=rolagro_db`, `DB_SSL=false`
 - `SMTP_USER`, `SMTP_PASS` (App Password de Gmail), `MAIL_TO`
 - `ADMIN_USER`, `ADMIN_PASS` (credenciales nuevas, no las de desarrollo)
 - `WHATSAPP_NUMBER`

@@ -16,7 +16,7 @@ function validEnv(overrides = {}) {
   return {
     DB_USER: "rolagro",
     DB_PASSWORD: "una-clave-real",
-    DB_NAME: "rolagro",
+    DB_NAME: "rolagro_db",
     SMTP_USER: "ventas@rolagro.com",
     SMTP_PASS: "abcd efgh ijkl mnop",
     MAIL_TO: "duenia@rolagro.com",
