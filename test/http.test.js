@@ -1,5 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const ExcelJS = require("exceljs");
 
 /**
  * Tests de humo sobre la app real.
@@ -86,10 +87,82 @@ test("GET /admin con las credenciales correctas sirve el panel", async () => {
 test("la API del panel también exige credenciales", async () => {
   // No alcanza con proteger el HTML: la API es la que expone y modifica los
   // datos. Si esto devolviera 200, el panel entero estaría abierto.
-  for (const path of ["/admin/api/products", "/admin/api/orders", "/admin/api/categories"]) {
+  for (const path of [
+    "/admin/api/products",
+    "/admin/api/products/search",
+    "/admin/api/products/1",
+    "/admin/api/orders",
+    "/admin/api/categories",
+    "/admin/api/inventory/import",
+    "/admin/api/products/1/publish",
+    "/admin/api/batches",
+  ]) {
     const response = await fetch(`${baseUrl}${path}`);
     assert.equal(response.status, 401, `${path} debería exigir credenciales`);
   }
+});
+
+/** Cabecera de autorización correcta, para no repetirla en cada test de abajo. */
+const ADMIN_AUTH = { Authorization: basicAuthHeader("admin-de-prueba", "clave-de-prueba") };
+
+/** Arma un .xlsx en memoria con la forma del reporte real del ERP, sin filas de producto. */
+async function buildEmptyInventoryFile() {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("Hoja1");
+  sheet.addRow(["NESTOR ROLANDO AVILA SANCHEZ"]);
+  sheet.addRow(["REFERENCIA", "DETALLE", "MARCA", "CANTIDAD"]);
+  const buffer = await workbook.xlsx.writeBuffer();
+  return new Blob([buffer], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+}
+
+test("POST /admin/api/inventory/import exige un archivo", async () => {
+  const response = await fetch(`${baseUrl}/admin/api/inventory/import`, {
+    method: "POST",
+    headers: ADMIN_AUTH,
+    body: new FormData(), // sin campo "file"
+  });
+
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /archivo/i);
+});
+
+test("POST /admin/api/inventory/import rechaza un archivo que no es .xlsx", async () => {
+  const form = new FormData();
+  form.append("file", new Blob(["no soy un excel"], { type: "text/plain" }), "inventario.csv");
+
+  const response = await fetch(`${baseUrl}/admin/api/inventory/import`, {
+    method: "POST",
+    headers: ADMIN_AUTH,
+    body: form,
+  });
+
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /\.xlsx/);
+});
+
+test("POST /admin/api/inventory/import procesa un archivo válido sin filas de producto", async () => {
+  // Sin filas de producto no hay nada que buscar en la base: este caso
+  // recorre multer + el controlador + el parser completo sin tocar MySQL,
+  // igual que el resto de los tests de este archivo.
+  const form = new FormData();
+  form.append("file", await buildEmptyInventoryFile(), "inventario.xlsx");
+
+  const response = await fetch(`${baseUrl}/admin/api/inventory/import`, {
+    method: "POST",
+    headers: ADMIN_AUTH,
+    body: form,
+  });
+
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.success, true);
+  assert.equal(body.totalDataRows, 0);
+  assert.equal(body.updated, 0);
+  assert.equal(body.created, 0);
+  assert.deepEqual(body.createdProducts, []);
+  assert.deepEqual(body.ambiguousSkus, []);
 });
 
 test("una ruta inexistente bajo /api responde 404 en JSON", async () => {

@@ -10,13 +10,29 @@
 
   const API = "/admin/api";
 
-  /** Catálogos en memoria para no repedirlos al abrir el modal. */
+  /** Categorías en memoria para no repedirlas al abrir el modal de producto. */
   let categories = [];
-  let products = [];
+
+  // Estado de la tabla de productos: paginada porque el catálogo puede
+  // tener miles de filas después de importar el ERP (ver
+  // inventoryImport.service.js). No se guarda "todos los productos" en
+  // memoria en ningún lado — cada acción (editar, buscar en el modal de
+  // lotes) pide el dato fresco al servidor en vez de buscarlo en un array
+  // que puede no tener esa página cargada.
+  let productsPage = 1;
+  let productsSearch = "";
+  let productsPublishedFilter = "";
+  let productsSearchDebounce = null;
 
   // --- Referencias DOM ---
   const feedbackEl = document.getElementById("admin-feedback");
   const productsTbody = document.getElementById("products-tbody");
+  const productsSearchEl = document.getElementById("products-search");
+  const productsFilterPublishedEl = document.getElementById("products-filter-published");
+  const productsCountEl = document.getElementById("products-count");
+  const productsPrevBtn = document.getElementById("products-prev");
+  const productsNextBtn = document.getElementById("products-next");
+  const productsPageLabelEl = document.getElementById("products-page-label");
   const categoriesListEl = document.getElementById("categories-list");
   const ordersTbody = document.getElementById("orders-tbody");
 
@@ -38,6 +54,23 @@
   const categoryForm = document.getElementById("category-form");
   const categoryNameEl = document.getElementById("category-name");
   const categoryFeedbackEl = document.getElementById("category-feedback");
+
+  const importModal = new bootstrap.Modal(document.getElementById("importModal"));
+  const importForm = document.getElementById("import-form");
+  const importFileEl = document.getElementById("import-file");
+  const importFeedbackEl = document.getElementById("import-feedback");
+  const importResultEl = document.getElementById("import-result");
+  const importSubmitBtn = document.getElementById("import-submit");
+
+  const batchesTbody = document.getElementById("batches-tbody");
+  const batchModal = new bootstrap.Modal(document.getElementById("batchModal"));
+  const batchForm = document.getElementById("batch-form");
+  const batchProductEl = document.getElementById("batch-product");
+  const batchProductOptionsEl = document.getElementById("batch-product-options");
+  const batchQtyEl = document.getElementById("batch-qty");
+  const batchDateEl = document.getElementById("batch-date");
+  const batchSubmitBtn = document.getElementById("batch-submit");
+  const batchFeedbackEl = document.getElementById("batch-feedback");
 
   const formatCOP = (value) =>
     "$" + Number(value).toLocaleString("es-CO", { maximumFractionDigits: 0 });
@@ -172,43 +205,106 @@
   // ==========================================================
 
   async function loadProducts() {
-    try {
-      products = await apiFetch("/products");
+    const params = new URLSearchParams({ page: productsPage });
+    if (productsSearch) params.set("search", productsSearch);
+    if (productsPublishedFilter) params.set("published", productsPublishedFilter);
 
-      if (products.length === 0) {
+    try {
+      const { items, total, page, totalPages } = await apiFetch(`/products?${params}`);
+
+      if (items.length === 0) {
         productsTbody.innerHTML = `
           <tr>
-            <td colspan="5" class="text-center text-muted py-4">
-              Todavía no hay productos. Crea el primero con "Nuevo producto".
+            <td colspan="6" class="text-center text-muted py-4">
+              ${
+                productsSearch || productsPublishedFilter
+                  ? "Ningún producto coincide con el filtro."
+                  : 'Todavía no hay productos. Crea el primero con "Nuevo producto".'
+              }
             </td>
           </tr>`;
-        return;
+      } else {
+        productsTbody.innerHTML = items.map(renderProductRow).join("");
       }
 
-      productsTbody.innerHTML = products.map(renderProductRow).join("");
+      productsPage = page;
+      productsCountEl.textContent =
+        total === 0 ? "" : `${total} producto${total === 1 ? "" : "s"} en total`;
+      productsPageLabelEl.textContent = `Página ${page} de ${totalPages}`;
+      productsPrevBtn.closest(".page-item").classList.toggle("disabled", page <= 1);
+      productsNextBtn.closest(".page-item").classList.toggle("disabled", page >= totalPages);
     } catch (err) {
       productsTbody.innerHTML = `
-        <tr><td colspan="5" class="text-center text-danger py-4">${escapeHtml(err.message)}</td></tr>`;
+        <tr><td colspan="6" class="text-center text-danger py-4">${escapeHtml(err.message)}</td></tr>`;
     }
   }
+
+  productsSearchEl.addEventListener("input", () => {
+    // Debounce: no se pide una página nueva en cada letra, se espera una
+    // pausa corta en el tipeo.
+    clearTimeout(productsSearchDebounce);
+    productsSearchDebounce = setTimeout(() => {
+      productsSearch = productsSearchEl.value.trim();
+      productsPage = 1;
+      loadProducts();
+    }, 300);
+  });
+
+  productsFilterPublishedEl.addEventListener("change", () => {
+    productsPublishedFilter = productsFilterPublishedEl.value;
+    productsPage = 1;
+    loadProducts();
+  });
+
+  productsPrevBtn.addEventListener("click", () => {
+    if (productsPage <= 1) return;
+    productsPage -= 1;
+    loadProducts();
+  });
+
+  productsNextBtn.addEventListener("click", () => {
+    productsPage += 1;
+    loadProducts();
+  });
 
   function renderProductRow(product) {
     const image = product.image_url
       ? `<img src="${escapeHtml(product.image_url)}" alt="" class="rounded" style="width:56px;height:56px;object-fit:cover;" />`
       : '<span class="text-muted small">—</span>';
 
+    // published llega de MySQL como 0/1 (TINYINT). Los borradores de la
+    // importación del ERP nacen así: sin precio ni categoría reales, y por
+    // eso invisibles en /api/products (ver products.service.js findAll).
+    const isDraft = !product.published;
+    const draftBadge = isDraft
+      ? '<span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle ms-2">Borrador</span>'
+      : "";
+
     return `
-      <tr>
+      <tr class="${isDraft ? "table-warning" : ""}">
         <td>${image}</td>
         <td>
-          <div class="fw-semibold">${escapeHtml(product.name)}</div>
+          <div class="fw-semibold">${escapeHtml(product.name)}${draftBadge}</div>
           <div class="text-muted small">${escapeHtml(product.description || "")}</div>
         </td>
         <td><span class="badge bg-success-subtle text-success-emphasis">${escapeHtml(product.category_name)}</span></td>
+        <td>${
+          product.marca_name
+            ? `<span class="badge bg-secondary-subtle text-secondary-emphasis">${escapeHtml(product.marca_name)}</span>`
+            : '<span class="text-muted small">—</span>'
+        }</td>
         <td class="text-end fw-semibold">${formatCOP(product.price)}</td>
         <td class="text-end">
           <button class="btn btn-sm btn-outline-secondary product-edit" data-id="${Number(product.id)}" title="Editar">
             <i class="bi bi-pencil"></i>
+          </button>
+          <button
+            class="btn btn-sm ${isDraft ? "btn-outline-success" : "btn-outline-secondary"} product-toggle-publish"
+            data-id="${Number(product.id)}"
+            data-published="${isDraft ? "1" : "0"}"
+            title="${isDraft ? "Publicar en el sitio" : "Ocultar del sitio"}"
+          >
+            <i class="bi ${isDraft ? "bi-eye" : "bi-eye-slash"}"></i>
           </button>
           <button class="btn btn-sm btn-outline-danger product-delete" data-id="${Number(product.id)}" data-name="${escapeHtml(product.name)}" title="Eliminar">
             <i class="bi bi-trash"></i>
@@ -222,6 +318,25 @@
     const editBtn = event.target.closest(".product-edit");
     if (editBtn) {
       openProductModal(Number(editBtn.dataset.id));
+      return;
+    }
+
+    const toggleBtn = event.target.closest(".product-toggle-publish");
+    if (toggleBtn) {
+      const publish = toggleBtn.dataset.published === "1";
+      try {
+        await apiFetch(`/products/${toggleBtn.dataset.id}/publish`, {
+          method: "PATCH",
+          body: JSON.stringify({ published: publish }),
+        });
+        await loadProducts();
+        showFeedback(
+          publish ? "Producto publicado: ya se ve en el sitio." : "Producto ocultado del sitio.",
+          "success"
+        );
+      } catch (err) {
+        showFeedback(err.message, "danger");
+      }
       return;
     }
 
@@ -266,10 +381,13 @@
     }
 
     if (id) {
-      // Se usa el listado que ya está en memoria en lugar de pedir el producto
-      // otra vez: la tabla visible se acaba de traer del servidor.
-      const product = products.find((p) => p.id === id);
-      if (!product) {
+      // Se pide el producto directo al servidor: con la tabla paginada, el
+      // que se quiere editar (ej. desde "Cargar precio" en el resultado de
+      // la importación) puede no estar en la página que está visible ahora.
+      let product;
+      try {
+        product = await apiFetch(`/products/${id}`);
+      } catch (err) {
         showFeedback("Ese producto ya no existe.", "warning");
         await loadProducts();
         return;
@@ -283,6 +401,13 @@
       productImageEl.value = product.image_url || "";
       productDescriptionEl.value = product.description || "";
       updateImagePreview();
+
+      if (!product.published) {
+        productFeedbackEl.textContent =
+          "Este producto es un borrador de la importación: no se ve en el sitio. " +
+          "Guardá el precio y la categoría reales, y después publicalo con el botón del ojo en la tabla.";
+        productFeedbackEl.className = "alert alert-warning mt-3";
+      }
     } else {
       productModalLabel.textContent = "Nuevo producto";
       productIdEl.value = "";
@@ -422,6 +547,212 @@
       </tr>`;
   }
 
+  // ==========================================================
+  // Vencimientos: lotes con fecha de vencimiento
+  // ==========================================================
+
+  const TIER_LABELS = {
+    vencido: "Vencido",
+    critico: "Crítico",
+    urgente: "Urgente",
+    proximo: "Próximo",
+    con_tiempo: "Con tiempo",
+  };
+  const TIER_BADGE_CLASS = {
+    vencido: "bg-danger",
+    critico: "bg-danger",
+    urgente: "bg-warning text-dark",
+    proximo: "bg-primary",
+    con_tiempo: "bg-success",
+  };
+
+  let batches = [];
+  let activeBatchTier = "";
+
+  function formatDateOnly(value) {
+    // expiration_date llega como "AAAA-MM-DD" (ver batches.service.js):
+    // se arma la fecha a mano para no reinterpretarla en la zona horaria
+    // del navegador (new Date("2026-08-15") la toma como UTC medianoche,
+    // que en un huso horario negativo puede mostrar el día anterior).
+    const [y, m, d] = value.split("-");
+    return `${d}/${m}/${y}`;
+  }
+
+  function updateBatchStats(rows) {
+    const counts = { vencido: 0, critico: 0, urgente: 0, proximo: 0, con_tiempo: 0 };
+    rows.forEach((b) => {
+      if (counts[b.tier] !== undefined) counts[b.tier]++;
+    });
+    document.getElementById("batch-stat-vencido").textContent = counts.vencido;
+    document.getElementById("batch-stat-critico").textContent = counts.critico;
+    document.getElementById("batch-stat-urgente").textContent = counts.urgente;
+    document.getElementById("batch-stat-proximo").textContent = counts.proximo;
+  }
+
+  function renderBatches() {
+    updateBatchStats(batches);
+
+    const filtered = activeBatchTier
+      ? batches.filter((b) => b.tier === activeBatchTier)
+      : batches;
+
+    if (filtered.length === 0) {
+      batchesTbody.innerHTML = `
+        <tr><td colspan="7" class="text-center text-muted py-4">
+          ${batches.length === 0 ? "Todavía no hay lotes cargados." : "Ningún lote en este filtro."}
+        </td></tr>`;
+      return;
+    }
+
+    batchesTbody.innerHTML = filtered
+      .map(
+        (b) => `
+        <tr>
+          <td>
+            <div class="fw-semibold">${escapeHtml(b.product_name)}</div>
+            <div class="text-muted small font-monospace">${escapeHtml(b.product_sku || "—")}</div>
+          </td>
+          <td>${b.marca_name ? escapeHtml(b.marca_name) : '<span class="text-muted small">—</span>'}</td>
+          <td class="text-end font-monospace">${Number(b.qty)}</td>
+          <td>${formatDateOnly(b.expiration_date)}</td>
+          <td class="text-end font-monospace ${b.days < 0 ? "text-danger fw-bold" : ""}">${Number(b.days)}</td>
+          <td><span class="badge ${TIER_BADGE_CLASS[b.tier] || "bg-secondary"}">${TIER_LABELS[b.tier] || b.tier}</span></td>
+          <td class="text-end">
+            <button class="btn btn-sm btn-outline-danger batch-delete" data-id="${Number(b.id)}" title="Eliminar lote">
+              <i class="bi bi-trash"></i>
+            </button>
+          </td>
+        </tr>`
+      )
+      .join("");
+  }
+
+  async function loadBatches() {
+    batchesTbody.innerHTML =
+      '<tr><td colspan="7" class="text-center text-muted py-4">Cargando…</td></tr>';
+    try {
+      batches = await apiFetch("/batches");
+      renderBatches();
+    } catch (err) {
+      batchesTbody.innerHTML = `
+        <tr><td colspan="7" class="text-center text-danger py-4">${escapeHtml(err.message)}</td></tr>`;
+    }
+  }
+
+  document.getElementById("batch-filter-chips").addEventListener("click", (event) => {
+    const btn = event.target.closest(".batch-filter-btn");
+    if (!btn) return;
+
+    // Bootstrap ya se encarga de rellenar el color de un btn-outline-* con
+    // la clase "active"; no hace falta tocar más clases que esa.
+    document.querySelectorAll(".batch-filter-btn").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+
+    activeBatchTier = btn.dataset.tier;
+    renderBatches();
+  });
+
+  batchesTbody.addEventListener("click", async (event) => {
+    const btn = event.target.closest(".batch-delete");
+    if (!btn) return;
+    if (!confirm("¿Eliminar este lote?")) return;
+
+    try {
+      await apiFetch(`/batches/${btn.dataset.id}`, { method: "DELETE" });
+      await loadBatches();
+      showFeedback("Lote eliminado.", "success");
+    } catch (err) {
+      showFeedback(err.message, "danger");
+    }
+  });
+
+  // Los lotes se piden al abrir la pestaña por primera vez, igual que los
+  // pedidos: no hace falta esa consulta para quien solo edita el catálogo.
+  let batchesLoaded = false;
+  document.getElementById("tab-vencimientos-btn").addEventListener("shown.bs.tab", () => {
+    if (batchesLoaded) return;
+    batchesLoaded = true;
+    loadBatches();
+  });
+
+  document.getElementById("btn-nuevo-lote").addEventListener("click", () => {
+    batchForm.reset();
+    batchFeedbackEl.className = "alert d-none";
+    batchProductOptionsEl.innerHTML = "";
+    batchModal.show();
+  });
+
+  /**
+   * Búsqueda en vivo del producto para el lote: el catálogo puede tener
+   * miles de filas, así que no se precarga nada — cada tecla (con
+   * debounce) pide al servidor los productos que coinciden por nombre o
+   * sku y los ofrece en el <datalist>.
+   */
+  let batchProductSearchDebounce = null;
+  batchProductEl.addEventListener("input", () => {
+    clearTimeout(batchProductSearchDebounce);
+    const query = batchProductEl.value.trim();
+    if (query.length < 2) {
+      batchProductOptionsEl.innerHTML = "";
+      return;
+    }
+
+    batchProductSearchDebounce = setTimeout(async () => {
+      try {
+        const results = await apiFetch(`/products/search?q=${encodeURIComponent(query)}`);
+        batchProductOptionsEl.innerHTML = results
+          .map(
+            (p) =>
+              `<option value="${escapeHtml(p.name)} (${escapeHtml(p.sku || "s/sku")})" data-id="${Number(p.id)}"></option>`
+          )
+          .join("");
+      } catch (err) {
+        // La búsqueda es un detalle del formulario: si falla, no interrumpe
+        // el modal, simplemente no aparecen sugerencias.
+        console.warn("No se pudo buscar el producto:", err.message);
+      }
+    }, 250);
+  });
+
+  batchForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+
+    // El input de texto guarda "Nombre (sku)"; se busca en el datalist la
+    // opción cuyo texto coincide exactamente, para recuperar el id real.
+    const typed = batchProductEl.value;
+    const option = Array.from(batchProductOptionsEl.options).find((o) => o.value === typed);
+
+    if (!option) {
+      batchFeedbackEl.textContent = "Elegí un producto de la lista (no un texto libre).";
+      batchFeedbackEl.className = "alert alert-warning mt-3";
+      return;
+    }
+
+    batchSubmitBtn.disabled = true;
+    batchSubmitBtn.textContent = "Guardando…";
+
+    try {
+      await apiFetch("/batches", {
+        method: "POST",
+        body: JSON.stringify({
+          product_id: Number(option.dataset.id),
+          qty: batchQtyEl.value,
+          expiration_date: batchDateEl.value,
+        }),
+      });
+
+      batchModal.hide();
+      await loadBatches();
+      showFeedback("Lote guardado.", "success");
+    } catch (err) {
+      batchFeedbackEl.textContent = err.message;
+      batchFeedbackEl.className = "alert alert-danger mt-3";
+    } finally {
+      batchSubmitBtn.disabled = false;
+      batchSubmitBtn.textContent = "Guardar";
+    }
+  });
+
   // Los pedidos se piden al abrir la pestaña por primera vez, no al cargar la
   // página: quien entra a editar el catálogo no necesita esa consulta.
   let ordersLoaded = false;
@@ -432,6 +763,130 @@
   });
 
   document.getElementById("btn-recargar-pedidos").addEventListener("click", loadOrders);
+
+  // ==========================================================
+  // Importar inventario (marcas) desde el Excel del ERP
+  // ==========================================================
+
+  document.getElementById("btn-importar-erp").addEventListener("click", () => {
+    importForm.reset();
+    importFeedbackEl.className = "alert d-none";
+    importResultEl.classList.add("d-none");
+    importModal.show();
+  });
+
+  function renderImportResult(result) {
+    document.getElementById("import-stat-total").textContent = result.totalDataRows;
+    document.getElementById("import-stat-updated").textContent = result.updated;
+    document.getElementById("import-stat-created").textContent = result.created;
+    document.getElementById("import-stat-batches").textContent = result.batchesUpserted;
+    document.getElementById("import-stat-ambiguous").textContent = result.ambiguousSkus.length;
+
+    const createdWrap = document.getElementById("import-created-wrap");
+    if (result.createdProducts.length > 0) {
+      document.getElementById("import-created-tbody").innerHTML = result.createdProducts
+        .map(
+          (c) => `
+          <tr>
+            <td class="font-monospace">${escapeHtml(c.sku)}</td>
+            <td>${escapeHtml(c.name)}</td>
+            <td class="text-muted">${Number(c.rowNumber)}</td>
+            <td class="text-end">
+              <button type="button" class="btn btn-sm btn-outline-success import-edit-created" data-id="${Number(c.id)}">
+                Cargar precio
+              </button>
+            </td>
+          </tr>`
+        )
+        .join("");
+      createdWrap.classList.remove("d-none");
+    } else {
+      createdWrap.classList.add("d-none");
+    }
+
+    const ambiguousWrap = document.getElementById("import-ambiguous-wrap");
+    if (result.ambiguousSkus.length > 0) {
+      document.getElementById("import-ambiguous-tbody").innerHTML = result.ambiguousSkus
+        .map((a) => {
+          const occurrences = a.occurrences
+            .map((o) => `${escapeHtml(o.name)} (fila ${Number(o.rowNumber)})`)
+            .join("; ");
+          return `
+            <tr>
+              <td class="font-monospace">${escapeHtml(a.sku)}</td>
+              <td>${occurrences}</td>
+            </tr>`;
+        })
+        .join("");
+      ambiguousWrap.classList.remove("d-none");
+    } else {
+      ambiguousWrap.classList.add("d-none");
+    }
+
+    importResultEl.classList.remove("d-none");
+  }
+
+  importForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+
+    const file = importFileEl.files[0];
+    if (!file) return;
+
+    importFeedbackEl.className = "alert d-none";
+    importResultEl.classList.add("d-none");
+    importSubmitBtn.disabled = true;
+    importSubmitBtn.textContent = "Importando…";
+
+    try {
+      // FormData, no JSON: apiFetch fuerza Content-Type: application/json, y
+      // acá el navegador tiene que armar el multipart/form-data él solo (con
+      // el boundary correcto), así que se llama a fetch directo.
+      const body = new FormData();
+      body.append("file", file);
+
+      const res = await fetch(`${API}/inventory/import`, { method: "POST", body });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || `Error ${res.status}`);
+      }
+
+      renderImportResult(data);
+
+      const partes = [];
+      if (data.updated > 0) partes.push(`${data.updated} actualizado(s)`);
+      if (data.created > 0) partes.push(`${data.created} creado(s) como borrador`);
+      if (data.batchesUpserted > 0) partes.push(`${data.batchesUpserted} lote(s) registrado(s)`);
+      const mensaje =
+        partes.length > 0
+          ? `Importación completa: ${partes.join(", ")}.`
+          : "Importación completa: no hubo cambios (revisá el detalle abajo).";
+      importFeedbackEl.textContent = mensaje;
+      importFeedbackEl.className = `alert ${partes.length > 0 ? "alert-success" : "alert-warning"}`;
+
+      if (data.updated > 0 || data.created > 0) {
+        await loadProducts(); // refleja las marcas y los borradores nuevos en la tabla.
+      }
+      if (data.batchesUpserted > 0) {
+        batchesLoaded = false; // fuerza a recargar la pestaña de vencimientos la próxima vez que se abra.
+      }
+    } catch (err) {
+      importFeedbackEl.textContent = err.message;
+      importFeedbackEl.className = "alert alert-danger";
+    } finally {
+      importSubmitBtn.disabled = false;
+      importSubmitBtn.textContent = "Importar";
+    }
+  });
+
+  // "Cargar precio" en la lista de recién creados: cierra el modal de
+  // importación y abre directo el modal de edición de ese producto.
+  document.getElementById("import-result").addEventListener("click", (event) => {
+    const btn = event.target.closest(".import-edit-created");
+    if (!btn) return;
+    importModal.hide();
+    openProductModal(Number(btn.dataset.id));
+  });
 
   // ==========================================================
   // Init

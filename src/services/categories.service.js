@@ -50,6 +50,43 @@ async function create(rawName) {
 }
 
 /**
+ * Busca una categoría por nombre exacto y la crea si no existe. Mismo
+ * patrón "find or create" que marcas.service.js.
+ *
+ * La usa la importación del ERP para el producto que no tiene ninguna
+ * categoría real disponible en el archivo: en vez de rechazar la fila entera
+ * o inventar una categoría al azar, se agrupan bajo una única categoría
+ * fija ("Sin categorizar", ver FALLBACK_CATEGORY_NAME en
+ * inventoryImport.service.js) para que el administrador las reubique más
+ * tarde desde el panel.
+ */
+async function findOrCreate(rawName) {
+  const name = String(rawName || "").trim();
+  if (!name) {
+    throw AppError.badRequest("El nombre de la categoría es requerido.");
+  }
+  if (name.length > 100) {
+    throw AppError.badRequest("El nombre de la categoría no puede superar los 100 caracteres.");
+  }
+
+  const [existing] = await pool.query("SELECT id FROM categories WHERE name = ?", [name]);
+  if (existing.length > 0) {
+    return existing[0].id;
+  }
+
+  try {
+    const [result] = await pool.query("INSERT INTO categories (name) VALUES (?)", [name]);
+    return result.insertId;
+  } catch (err) {
+    if (err.code === DUPLICATE_ENTRY) {
+      const [rows] = await pool.query("SELECT id FROM categories WHERE name = ?", [name]);
+      if (rows.length > 0) return rows[0].id;
+    }
+    throw err;
+  }
+}
+
+/**
  * Elimina una categoría.
  * Que todavía tenga productos es un conflicto de datos previsible (409), no
  * un fallo del servidor: se traduce aquí para que el controlador no tenga que
@@ -74,4 +111,4 @@ async function remove(rawId) {
   }
 }
 
-module.exports = { findAll, exists, create, remove };
+module.exports = { findAll, exists, create, findOrCreate, remove };

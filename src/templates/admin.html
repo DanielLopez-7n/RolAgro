@@ -58,6 +58,18 @@
         <button
           class="nav-link"
           data-bs-toggle="tab"
+          data-bs-target="#tab-vencimientos"
+          type="button"
+          role="tab"
+          id="tab-vencimientos-btn"
+        >
+          <i class="bi bi-calendar-x"></i> Vencimientos
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button
+          class="nav-link"
+          data-bs-toggle="tab"
           data-bs-target="#tab-pedidos"
           type="button"
           role="tab"
@@ -76,12 +88,38 @@
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
           <h2 class="h5 mb-0">Catálogo</h2>
           <div class="d-flex gap-2">
+            <button class="btn btn-outline-secondary btn-sm" id="btn-importar-erp">
+              <i class="bi bi-file-earmark-arrow-up"></i> Importar Excel (ERP)
+            </button>
             <button class="btn btn-outline-success btn-sm" id="btn-nueva-categoria">
               <i class="bi bi-tag"></i> Nueva categoría
             </button>
             <button class="btn btn-success btn-sm" id="btn-nuevo-producto">
               <i class="bi bi-plus-lg"></i> Nuevo producto
             </button>
+          </div>
+        </div>
+
+        <!-- Búsqueda y filtro: imprescindibles apenas el catálogo pasa de unas
+             pocas decenas de productos (ej. después de importar el ERP). -->
+        <div class="row g-2 mb-3">
+          <div class="col-md-6">
+            <div class="input-group input-group-sm">
+              <span class="input-group-text"><i class="bi bi-search"></i></span>
+              <input
+                type="search"
+                class="form-control"
+                id="products-search"
+                placeholder="Buscar por nombre o sku…"
+              />
+            </div>
+          </div>
+          <div class="col-md-4">
+            <select class="form-select form-select-sm" id="products-filter-published">
+              <option value="">Todos los productos</option>
+              <option value="true">Solo publicados</option>
+              <option value="false">Solo borradores</option>
+            </select>
           </div>
         </div>
 
@@ -92,21 +130,116 @@
                 <th style="width: 80px;">Imagen</th>
                 <th>Producto</th>
                 <th>Categoría</th>
+                <th>Marca</th>
                 <th class="text-end">Precio</th>
                 <th class="text-end" style="width: 130px;">Acciones</th>
               </tr>
             </thead>
             <tbody id="products-tbody">
               <tr>
-                <td colspan="5" class="text-center text-muted py-4">Cargando…</td>
+                <td colspan="6" class="text-center text-muted py-4">Cargando…</td>
               </tr>
             </tbody>
           </table>
         </div>
 
+        <div class="d-flex justify-content-between align-items-center mt-2">
+          <p class="text-muted small mb-0" id="products-count"></p>
+          <nav aria-label="Páginas del catálogo">
+            <ul class="pagination pagination-sm mb-0">
+              <li class="page-item"><button type="button" class="page-link" id="products-prev">Anterior</button></li>
+              <li class="page-item disabled"><span class="page-link" id="products-page-label">Página 1</span></li>
+              <li class="page-item"><button type="button" class="page-link" id="products-next">Siguiente</button></li>
+            </ul>
+          </nav>
+        </div>
+
         <!-- Categorías: listado compacto con opción de borrado -->
         <h2 class="h6 mt-4 mb-2">Categorías</h2>
         <div id="categories-list" class="d-flex flex-wrap gap-2"></div>
+      </div>
+
+      <!-- ===== PESTAÑA: VENCIMIENTOS ===== -->
+      <div class="tab-pane fade" id="tab-vencimientos" role="tabpanel">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+          <h2 class="h5 mb-0">Lotes por vencer</h2>
+          <button class="btn btn-success btn-sm" id="btn-nuevo-lote">
+            <i class="bi bi-plus-lg"></i> Nuevo lote
+          </button>
+        </div>
+
+        <!-- KPIs -->
+        <div class="row g-2 mb-3">
+          <div class="col-6 col-md-3">
+            <div class="card h-100 border-danger-subtle">
+              <div class="card-body p-3 text-center">
+                <div class="h4 mb-0 text-danger" id="batch-stat-vencido">0</div>
+                <div class="text-muted small">Vencidos</div>
+              </div>
+            </div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="card h-100 border-danger-subtle">
+              <div class="card-body p-3 text-center">
+                <div class="h4 mb-0 text-danger" id="batch-stat-critico">0</div>
+                <div class="text-muted small">Críticos (≤30d)</div>
+              </div>
+            </div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="card h-100 border-warning-subtle">
+              <div class="card-body p-3 text-center">
+                <div class="h4 mb-0 text-warning-emphasis" id="batch-stat-urgente">0</div>
+                <div class="text-muted small">Urgentes (31-60d)</div>
+              </div>
+            </div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="card h-100 border-primary-subtle">
+              <div class="card-body p-3 text-center">
+                <div class="h4 mb-0 text-primary" id="batch-stat-proximo">0</div>
+                <div class="text-muted small">Próximos (61-90d)</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Filtro por urgencia -->
+        <div class="d-flex flex-wrap gap-2 mb-3" id="batch-filter-chips">
+          <button type="button" class="btn btn-sm btn-dark batch-filter-btn active" data-tier="">Todos</button>
+          <button type="button" class="btn btn-sm btn-outline-danger batch-filter-btn" data-tier="vencido">Vencidos</button>
+          <button type="button" class="btn btn-sm btn-outline-danger batch-filter-btn" data-tier="critico">Crítico</button>
+          <button type="button" class="btn btn-sm btn-outline-warning batch-filter-btn" data-tier="urgente">Urgente</button>
+          <button type="button" class="btn btn-sm btn-outline-primary batch-filter-btn" data-tier="proximo">Próximo</button>
+          <button type="button" class="btn btn-sm btn-outline-success batch-filter-btn" data-tier="con_tiempo">Con tiempo</button>
+        </div>
+
+        <div class="table-responsive bg-white rounded shadow-sm">
+          <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>Producto</th>
+                <th>Marca</th>
+                <th class="text-end">Cantidad</th>
+                <th>Vencimiento</th>
+                <th class="text-end">Días</th>
+                <th>Urgencia</th>
+                <th class="text-end" style="width: 70px;">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="batches-tbody">
+              <tr>
+                <td colspan="7" class="text-center text-muted py-4">
+                  Abre esta pestaña para cargar los lotes.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="text-muted small mt-2 mb-0">
+          Los lotes vencidos o próximos a vencer llegan de la importación del ERP, o se pueden
+          cargar acá a mano con "Nuevo lote".
+        </p>
       </div>
 
       <!-- ===== PESTAÑA: PEDIDOS ===== -->
@@ -232,6 +365,143 @@
           <div class="modal-footer">
             <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
             <button type="submit" class="btn btn-success">Crear</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: IMPORTAR EXCEL DEL ERP ===== -->
+  <div class="modal fade" id="importModal" tabindex="-1" aria-labelledby="importModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <form id="import-form">
+          <div class="modal-header">
+            <h5 class="modal-title" id="importModalLabel">Importar marcas desde el ERP</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+          </div>
+          <div class="modal-body">
+            <p class="text-muted small">
+              Subí el Excel de <strong>saldos de inventario</strong> que exporta el ERP de la
+              tienda física. Cada fila se empareja por su código de referencia (sku): si el
+              producto ya existe en el catálogo, se le completa la marca; si no existe, se crea
+              como <strong>borrador sin publicar</strong> (precio $0, categoría
+              "Sin categorizar") — no aparece en el sitio hasta que le cargues un precio y una
+              categoría reales desde "Editar".
+            </p>
+
+            <label for="import-file" class="form-label">Archivo (.xlsx)</label>
+            <input type="file" class="form-control" id="import-file" accept=".xlsx" required />
+
+            <div id="import-feedback" class="alert d-none mt-3" role="alert"></div>
+
+            <div id="import-result" class="d-none mt-3">
+              <div class="row row-cols-5 g-2 text-center mb-3">
+                <div class="col">
+                  <div class="border rounded p-2">
+                    <div class="fs-5 fw-bold" id="import-stat-total">0</div>
+                    <div class="text-muted small">Filas leídas</div>
+                  </div>
+                </div>
+                <div class="col">
+                  <div class="border rounded p-2 bg-success-subtle">
+                    <div class="fs-5 fw-bold text-success-emphasis" id="import-stat-updated">0</div>
+                    <div class="text-muted small">Actualizados</div>
+                  </div>
+                </div>
+                <div class="col">
+                  <div class="border rounded p-2 bg-warning-subtle">
+                    <div class="fs-5 fw-bold text-warning-emphasis" id="import-stat-created">0</div>
+                    <div class="text-muted small">Creados (borrador)</div>
+                  </div>
+                </div>
+                <div class="col">
+                  <div class="border rounded p-2 bg-primary-subtle">
+                    <div class="fs-5 fw-bold text-primary-emphasis" id="import-stat-batches">0</div>
+                    <div class="text-muted small">Lotes registrados</div>
+                  </div>
+                </div>
+                <div class="col">
+                  <div class="border rounded p-2 bg-danger-subtle">
+                    <div class="fs-5 fw-bold text-danger-emphasis" id="import-stat-ambiguous">0</div>
+                    <div class="text-muted small">Sku repetido</div>
+                  </div>
+                </div>
+              </div>
+
+              <div id="import-created-wrap" class="d-none mb-3">
+                <h6 class="small text-uppercase text-muted">
+                  Creados como borrador — sin precio ni categoría real todavía
+                </h6>
+                <div class="table-responsive" style="max-height: 220px;">
+                  <table class="table table-sm mb-0">
+                    <thead><tr><th>Sku</th><th>Nombre</th><th>Fila</th><th></th></tr></thead>
+                    <tbody id="import-created-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div id="import-ambiguous-wrap" class="d-none">
+                <h6 class="small text-uppercase text-muted">
+                  Sku repetido en el archivo (revisar a mano, no se aplicó)
+                </h6>
+                <div class="table-responsive" style="max-height: 220px;">
+                  <table class="table table-sm mb-0">
+                    <thead><tr><th>Sku</th><th>Ocurrencias</th></tr></thead>
+                    <tbody id="import-ambiguous-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cerrar</button>
+            <button type="submit" class="btn btn-success" id="import-submit">Importar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: NUEVO LOTE ===== -->
+  <div class="modal fade" id="batchModal" tabindex="-1" aria-labelledby="batchModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <form id="batch-form">
+          <div class="modal-header">
+            <h5 class="modal-title" id="batchModalLabel">Nuevo lote</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+          </div>
+          <div class="modal-body">
+            <label for="batch-product" class="form-label">Producto</label>
+            <input
+              type="text"
+              class="form-control"
+              id="batch-product"
+              list="batch-product-options"
+              placeholder="Escribí para buscar por nombre o sku…"
+              autocomplete="off"
+              required
+            />
+            <datalist id="batch-product-options"></datalist>
+            <div class="form-text">Elegí un producto de la lista (aparece al escribir).</div>
+
+            <div class="row g-3 mt-1">
+              <div class="col-6">
+                <label for="batch-qty" class="form-label">Cantidad</label>
+                <input type="number" class="form-control" id="batch-qty" min="1" step="1" required />
+              </div>
+              <div class="col-6">
+                <label for="batch-date" class="form-label">Fecha de vencimiento</label>
+                <input type="date" class="form-control" id="batch-date" required />
+              </div>
+            </div>
+
+            <div id="batch-feedback" class="alert d-none mt-3" role="alert"></div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="btn btn-success" id="batch-submit">Guardar</button>
           </div>
         </form>
       </div>
