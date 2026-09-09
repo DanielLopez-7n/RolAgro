@@ -289,11 +289,13 @@ async function importInventory(
   for (const row of safeRows) {
     let marcaId = null;
     if (row.marca) {
-      marcaId = marcaIdByName.get(row.marca);
-      if (!marcaId) {
-        marcaId = await findOrCreateMarca(row.marca);
-        marcaIdByName.set(row.marca, marcaId);
+      // Se pregunta por la clave (has), no por el valor: un id falsy — 0, o
+      // lo que devuelva una función falsa en un test — volvería a consultar
+      // en cada fila si el chequeo fuera "if (!marcaId)".
+      if (!marcaIdByName.has(row.marca)) {
+        marcaIdByName.set(row.marca, await findOrCreateMarca(row.marca));
       }
+      marcaId = marcaIdByName.get(row.marca);
     }
 
     const product = await findProductBySku(row.sku);
