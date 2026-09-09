@@ -21,6 +21,34 @@ test("toDateOnlyString rechaza una fecha inválida en vez de devolver 'Invalid D
   assert.throws(() => toDateOnlyString("no-es-una-fecha"), { statusCode: 400 });
 });
 
+test("toDateOnlyString devuelve tal cual el texto AAAA-MM-DD que entrega MySQL", () => {
+  // Con dateStrings: ["DATE"] (ver config/db.js) la fecha llega ya como
+  // texto. Devolverla sin convertirla a Date es lo que la hace inmune a la
+  // zona horaria del servidor: no hay ningún instante que interpretar.
+  assert.equal(toDateOnlyString("2026-08-15"), "2026-08-15");
+  assert.equal(toDateOnlyString(" 2026-12-01 "), "2026-12-01");
+});
+
+test("toDateOnlyString no corre la fecha un día en un servidor con huso positivo", () => {
+  // Regresión: mysql2, SIN dateStrings, devuelve un DATE como medianoche
+  // LOCAL. En un servidor en UTC+2 esa medianoche es el día anterior en
+  // UTC, y leer los componentes UTC daba un día menos: un lote que vence
+  // el 15 se mostraba venciendo el 14.
+  const comoLoDaMysqlSinDateStrings = new Date(2026, 7, 15); // medianoche local
+  const comoLoDaExcelJS = new Date(Date.UTC(2026, 7, 15)); // medianoche UTC
+  const comoLoDaMysqlConDateStrings = "2026-08-15"; // texto plano
+
+  // El texto es la única de las tres formas que da el mismo resultado en
+  // cualquier zona horaria; por eso la config fuerza dateStrings.
+  assert.equal(toDateOnlyString(comoLoDaMysqlConDateStrings), "2026-08-15");
+  assert.equal(toDateOnlyString(comoLoDaExcelJS), "2026-08-15");
+
+  // Esta última depende del huso del proceso: se documenta el porqué de la
+  // config, no se afirma un valor que cambiaría según dónde corran los tests.
+  const resultadoLocal = toDateOnlyString(comoLoDaMysqlSinDateStrings);
+  assert.match(resultadoLocal, /^2026-08-1[45]$/);
+});
+
 test("daysUntil cuenta días de calendario, no horas exactas", () => {
   // "Hoy" a las 23:50 y el vencimiento es mañana a las 00:10: sigue siendo
   // "1 día", no "0 días" ni un número con fracción.

@@ -27,15 +27,27 @@ const URGENCY_TIERS = {
  * Formatea una fecha (Date, o algo convertible) como "AAAA-MM-DD" usando sus
  * componentes UTC.
  *
- * mysql2 devuelve las columnas DATE como objetos Date a medianoche UTC, y
- * ExcelJS hace lo mismo al leer una fecha de una celda; tomar los
- * componentes locales acá correría el riesgo de un día de diferencia según
- * la zona horaria del proceso de Node. Por eso todo el módulo trabaja la
- * fecha de vencimiento como texto "AAAA-MM-DD", no como Date, salvo al
- * calcular los días restantes contra "hoy" (que sí es una fecha local: hoy
- * es hoy en la zona horaria de la tienda, no en UTC).
+ * Una fecha de vencimiento es un día del calendario, no un instante: no
+ * tiene hora ni zona horaria. El problema es que llega en tres formas
+ * distintas y NO todas coinciden:
+ *
+ *  - MySQL (con dateStrings: ["DATE"], ver config/db.js): texto ya
+ *    "AAAA-MM-DD". Es el caso ideal y sale por el atajo de abajo.
+ *  - ExcelJS: un Date a medianoche UTC.
+ *  - mysql2 SIN dateStrings: un Date a medianoche LOCAL. En un servidor con
+ *    huso positivo eso cae el día anterior en UTC. Por eso se fuerza
+ *    dateStrings en la config; este saneo queda igual como red de
+ *    seguridad para cualquier Date que llegue desde otro lado.
  */
+const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
 function toDateOnlyString(value) {
+  // Ya es un día del calendario en texto: no hay nada que interpretar, y
+  // convertirlo a Date solo abriría la puerta a un corrimiento de zona.
+  if (typeof value === "string" && DATE_ONLY_PATTERN.test(value.trim())) {
+    return value.trim();
+  }
+
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) {
     throw AppError.badRequest("La fecha de vencimiento no es válida.");
