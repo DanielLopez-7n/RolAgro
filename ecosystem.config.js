@@ -18,6 +18,16 @@ module.exports = {
       exec_mode: "fork",
       env: {
         NODE_ENV: "production",
+        // El proceso corre en la hora de Colombia, no en la del servidor.
+        //
+        // El panel de vencimientos calcula "días restantes" contra el día de
+        // HOY (ver batches.service.js, daysUntil). Si el VPS quedara en UTC
+        // -lo habitual en un servidor recién instalado-, entre las 7pm y la
+        // medianoche de Colombia el proceso ya estaría contando el día
+        // siguiente: un lote que vence hoy aparecería como vencido durante
+        // esas horas. Las fechas guardadas no cambian; lo que se fija acá es
+        // qué día considera "hoy" el servidor.
+        TZ: "America/Bogota",
       },
       max_memory_restart: "300M",
       // Si el proceso reinicia en bucle (crash loop), mejor que PM2 se
