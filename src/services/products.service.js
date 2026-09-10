@@ -1,5 +1,6 @@
 const pool = require("../config/db");
 const categoriesService = require("./categories.service");
+const marcasService = require("./marcas.service");
 const AppError = require("../utils/AppError");
 const { parseId } = require("../utils/validate");
 
@@ -34,10 +35,30 @@ const SELECT_WITH_CATEGORY = `
 `;
 
 /**
+ * Normaliza la marca elegida en el panel a un id o a `null`.
+ *
+ * La marca es opcional, a diferencia de la categoría: el `<select>` del modal
+ * tiene una opción "Sin marca" que llega como cadena vacía, y un producto
+ * genérico (un fertilizante sin marca comercial, ver data/schema.sql) se queda
+ * así para siempre. "Vacío" y "un id que no sirve" son casos distintos: el
+ * primero es una elección válida y el segundo un error, así que este helper
+ * traduce el primero a null y deja que parseId rechace el segundo.
+ *
+ * Separado de la consulta —igual que resolvePagination— porque es la parte con
+ * casos borde y se puede probar sin base de datos.
+ */
+function normalizeMarcaId(value) {
+  if (value === null || value === undefined || String(value).trim() === "") {
+    return null;
+  }
+  return parseId(value, "marca");
+}
+
+/**
  * Valida y normaliza los datos de un producto que llegan del panel.
  * Devuelve el objeto listo para SQL o lanza AppError con el motivo.
  */
-async function validate({ name, description, price, categoryId, imageUrl }) {
+async function validate({ name, description, price, categoryId, marcaId, imageUrl }) {
   const cleanName = String(name || "").trim();
   if (!cleanName) {
     throw AppError.badRequest("El nombre del producto es requerido.");
@@ -76,11 +97,22 @@ async function validate({ name, description, price, categoryId, imageUrl }) {
     throw AppError.badRequest("La categoría elegida ya no existe.");
   }
 
+  // Se comprueba acá y no se deja reventar el FK de products.marca_id: un
+  // ER_NO_REFERENCED_ROW sale como error 500 y el panel muestra "algo salió
+  // mal", cuando en realidad el dato de entrada es corregible por quien lo
+  // envió (la marca se borró desde otra pestaña mientras el modal estaba
+  // abierto). Mismo criterio que la categoría, unas líneas más arriba.
+  const numericMarcaId = normalizeMarcaId(marcaId);
+  if (numericMarcaId !== null && !(await marcasService.exists(numericMarcaId))) {
+    throw AppError.badRequest("La marca elegida ya no existe.");
+  }
+
   return {
     name: cleanName,
     description: cleanDescription || null,
     price: numericPrice,
     categoryId: numericCategoryId,
+    marcaId: numericMarcaId,
     imageUrl: cleanImageUrl || null,
   };
 }
@@ -320,24 +352,32 @@ async function create(input) {
   const data = await validate(input);
 
   const [result] = await pool.query(
-    `INSERT INTO products (category_id, name, description, price, image_url)
-     VALUES (?, ?, ?, ?, ?)`,
-    [data.categoryId, data.name, data.description, data.price, data.imageUrl]
+    `INSERT INTO products (category_id, marca_id, name, description, price, image_url)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [data.categoryId, data.marcaId, data.name, data.description, data.price, data.imageUrl]
   );
 
   return { id: result.insertId };
 }
 
-/** Actualiza un producto existente. Lanza 404 si el id no existe. */
+/**
+ * Actualiza un producto existente. Lanza 404 si el id no existe.
+ *
+ * `marca_id` entra en el SET, así que guardar el formulario con "Sin marca"
+ * elegida la deja en NULL: el modal muestra la marca actual, y lo que el
+ * administrador ve ahí es lo que queda guardado. Es a propósito distinto de
+ * updateMarca(), el camino de la importación, que nunca borra una marca ya
+ * cargada porque el Excel puede traer la columna vacía sin querer decir nada.
+ */
 async function update(rawId, input) {
   const id = parseId(rawId, "identificador de producto");
   const data = await validate(input);
 
   const [result] = await pool.query(
     `UPDATE products
-       SET category_id = ?, name = ?, description = ?, price = ?, image_url = ?
+       SET category_id = ?, marca_id = ?, name = ?, description = ?, price = ?, image_url = ?
      WHERE id = ?`,
-    [data.categoryId, data.name, data.description, data.price, data.imageUrl, id]
+    [data.categoryId, data.marcaId, data.name, data.description, data.price, data.imageUrl, id]
   );
 
   if (result.affectedRows === 0) {
@@ -364,6 +404,7 @@ module.exports = {
   findAll,
   findAllForAdmin,
   resolvePagination,
+  normalizeMarcaId,
   findById,
   search,
   findByIds,

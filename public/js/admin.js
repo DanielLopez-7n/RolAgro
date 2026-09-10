@@ -13,6 +13,9 @@
   /** Categorías en memoria para no repedirlas al abrir el modal de producto. */
   let categories = [];
 
+  /** Marcas en memoria, por el mismo motivo que las categorías. */
+  let marcas = [];
+
   // Estado de la tabla de productos: paginada porque el catálogo puede
   // tener miles de filas después de importar el ERP (ver
   // inventoryImport.service.js). No se guarda "todos los productos" en
@@ -34,6 +37,7 @@
   const productsNextBtn = document.getElementById("products-next");
   const productsPageLabelEl = document.getElementById("products-page-label");
   const categoriesListEl = document.getElementById("categories-list");
+  const marcasListEl = document.getElementById("marcas-list");
   const ordersTbody = document.getElementById("orders-tbody");
 
   const productModal = new bootstrap.Modal(document.getElementById("productModal"));
@@ -43,6 +47,7 @@
   const productNameEl = document.getElementById("product-name");
   const productPriceEl = document.getElementById("product-price");
   const productCategoryEl = document.getElementById("product-category");
+  const productMarcaEl = document.getElementById("product-marca");
   const productImageEl = document.getElementById("product-image");
   const productDescriptionEl = document.getElementById("product-description");
   const productPreviewEl = document.getElementById("product-image-preview");
@@ -54,6 +59,11 @@
   const categoryForm = document.getElementById("category-form");
   const categoryNameEl = document.getElementById("category-name");
   const categoryFeedbackEl = document.getElementById("category-feedback");
+
+  const marcaModal = new bootstrap.Modal(document.getElementById("marcaModal"));
+  const marcaForm = document.getElementById("marca-form");
+  const marcaNameEl = document.getElementById("marca-name");
+  const marcaFeedbackEl = document.getElementById("marca-feedback");
 
   const importModal = new bootstrap.Modal(document.getElementById("importModal"));
   const importForm = document.getElementById("import-form");
@@ -197,6 +207,80 @@
     } catch (err) {
       categoryFeedbackEl.textContent = err.message;
       categoryFeedbackEl.className = "alert alert-danger mt-3";
+    }
+  });
+
+  // ==========================================================
+  // Marcas
+  // ==========================================================
+
+  async function loadMarcas() {
+    marcas = await apiFetch("/marcas");
+
+    // La opción vacía va primero y siempre existe: la marca es opcional, y sin
+    // ella no habría forma de sacarle la marca a un producto que ya la tiene.
+    productMarcaEl.innerHTML =
+      '<option value="">— Sin marca —</option>' +
+      marcas
+        .map((marca) => `<option value="${Number(marca.id)}">${escapeHtml(marca.name)}</option>`)
+        .join("");
+
+    marcasListEl.innerHTML = marcas.length
+      ? marcas
+          .map(
+            (marca) => `
+            <span class="badge bg-light text-dark border d-flex align-items-center gap-2 py-2">
+              ${escapeHtml(marca.name)}
+              <button
+                class="btn-close btn-close-sm marca-delete"
+                style="font-size: 0.6rem;"
+                data-id="${Number(marca.id)}"
+                data-name="${escapeHtml(marca.name)}"
+                title="Eliminar marca"
+                aria-label="Eliminar marca ${escapeHtml(marca.name)}"
+              ></button>
+            </span>`
+          )
+          .join("")
+      : '<span class="text-muted small">Todavía no hay marcas.</span>';
+  }
+
+  marcasListEl.addEventListener("click", async (event) => {
+    const button = event.target.closest(".marca-delete");
+    if (!button) return;
+
+    const name = button.dataset.name;
+    if (!confirm(`¿Eliminar la marca "${name}"?`)) return;
+
+    try {
+      await apiFetch(`/marcas/${button.dataset.id}`, { method: "DELETE" });
+      await loadMarcas();
+      showFeedback(`Marca "${name}" eliminada.`, "success");
+    } catch (err) {
+      // El caso típico es 409: la marca todavía tiene productos.
+      showFeedback(err.message, "danger");
+    }
+  });
+
+  document.getElementById("btn-nueva-marca").addEventListener("click", () => {
+    marcaForm.reset();
+    marcaFeedbackEl.className = "alert d-none";
+    marcaModal.show();
+  });
+
+  marcaForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      await apiFetch("/marcas", {
+        method: "POST",
+        body: JSON.stringify({ name: marcaNameEl.value.trim() }),
+      });
+      marcaModal.hide();
+      await loadMarcas();
+      showFeedback("Marca creada.", "success");
+    } catch (err) {
+      marcaFeedbackEl.textContent = err.message;
+      marcaFeedbackEl.className = "alert alert-danger mt-3";
     }
   });
 
@@ -380,6 +464,19 @@
       return;
     }
 
+    // Las marcas se reintentan igual que las categorías, pero acá NO se corta
+    // si la lista queda vacía: un producto sin marca es un caso normal (los
+    // genéricos sin marca comercial), así que el modal se abre igual con la
+    // única opción "Sin marca".
+    if (!marcas.length) {
+      try {
+        await loadMarcas();
+      } catch (err) {
+        showFeedback("No se pudieron cargar las marcas: " + err.message, "danger");
+        return;
+      }
+    }
+
     if (id) {
       // Se pide el producto directo al servidor: con la tabla paginada, el
       // que se quiere editar (ej. desde "Cargar precio" en el resultado de
@@ -398,6 +495,9 @@
       productNameEl.value = product.name;
       productPriceEl.value = product.price;
       productCategoryEl.value = product.category_id;
+      // "" es la opción "Sin marca": marca_id llega null para los productos
+      // que no tienen ninguna.
+      productMarcaEl.value = product.marca_id || "";
       productImageEl.value = product.image_url || "";
       productDescriptionEl.value = product.description || "";
       updateImagePreview();
@@ -411,6 +511,7 @@
     } else {
       productModalLabel.textContent = "Nuevo producto";
       productIdEl.value = "";
+      productMarcaEl.value = "";
     }
 
     productModal.show();
@@ -453,6 +554,8 @@
       name: productNameEl.value.trim(),
       price: productPriceEl.value,
       category_id: productCategoryEl.value,
+      // "" (Sin marca) viaja como null: el servicio lo traduce a marca_id NULL.
+      marca_id: productMarcaEl.value || null,
       image_url: productImageEl.value.trim(),
       description: productDescriptionEl.value.trim(),
     };
@@ -866,6 +969,10 @@
 
       if (data.updated > 0 || data.created > 0) {
         await loadProducts(); // refleja las marcas y los borradores nuevos en la tabla.
+        // La importación da de alta las marcas que no existían (find-or-create):
+        // se recargan para que aparezcan en los chips y en el selector del
+        // modal de producto sin tener que refrescar la página.
+        await loadMarcas();
       }
       if (data.batchesUpserted > 0) {
         batchesLoaded = false; // fuerza a recargar la pestaña de vencimientos la próxima vez que se abra.
@@ -894,6 +1001,7 @@
 
   hideFeedback();
   loadCategories()
+    .then(loadMarcas)
     .then(loadProducts)
     .catch((err) => showFeedback("No se pudo cargar el panel: " + err.message, "danger"));
 })();

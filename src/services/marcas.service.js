@@ -22,6 +22,12 @@ async function findAll() {
   return rows;
 }
 
+/** Comprueba si una marca existe. Se usa al validar productos. */
+async function exists(id) {
+  const [rows] = await pool.query("SELECT id FROM marcas WHERE id = ?", [id]);
+  return rows.length > 0;
+}
+
 /** Crea una marca. Lanza 409 si el nombre ya está en uso. */
 async function create(rawName) {
   const name = String(rawName || "").trim();
@@ -109,4 +115,4 @@ async function remove(rawId) {
   }
 }
 
-module.exports = { findAll, create, findOrCreate, remove };
+module.exports = { findAll, exists, create, findOrCreate, remove };

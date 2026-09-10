@@ -93,6 +93,8 @@ test("la API del panel también exige credenciales", async () => {
     "/admin/api/products/1",
     "/admin/api/orders",
     "/admin/api/categories",
+    "/admin/api/marcas",
+    "/admin/api/marcas/1",
     "/admin/api/inventory/import",
     "/admin/api/products/1/publish",
     "/admin/api/batches",

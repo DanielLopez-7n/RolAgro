@@ -94,6 +94,9 @@
             <button class="btn btn-outline-success btn-sm" id="btn-nueva-categoria">
               <i class="bi bi-tag"></i> Nueva categoría
             </button>
+            <button class="btn btn-outline-success btn-sm" id="btn-nueva-marca">
+              <i class="bi bi-award"></i> Nueva marca
+            </button>
             <button class="btn btn-success btn-sm" id="btn-nuevo-producto">
               <i class="bi bi-plus-lg"></i> Nuevo producto
             </button>
@@ -157,6 +160,11 @@
         <!-- Categorías: listado compacto con opción de borrado -->
         <h2 class="h6 mt-4 mb-2">Categorías</h2>
         <div id="categories-list" class="d-flex flex-wrap gap-2"></div>
+
+        <!-- Marcas: mismo formato. Se llenan a mano acá o por la importación
+             del ERP, que da de alta la marca de cada fila si no existía. -->
+        <h2 class="h6 mt-4 mb-2">Marcas</h2>
+        <div id="marcas-list" class="d-flex flex-wrap gap-2"></div>
       </div>
 
       <!-- ===== PESTAÑA: VENCIMIENTOS ===== -->
@@ -301,11 +309,16 @@
                 <label for="product-price" class="form-label">Precio (COP)</label>
                 <input type="number" class="form-control" id="product-price" min="0" step="1" required />
               </div>
-              <div class="col-md-6">
+              <div class="col-md-4">
                 <label for="product-category" class="form-label">Categoría</label>
                 <select class="form-select" id="product-category" required></select>
               </div>
-              <div class="col-md-6">
+              <div class="col-md-4">
+                <!-- Sin "required": un producto genérico puede no tener marca. -->
+                <label for="product-marca" class="form-label">Marca</label>
+                <select class="form-select" id="product-marca"></select>
+              </div>
+              <div class="col-md-4">
                 <label for="product-image" class="form-label">URL de la imagen</label>
                 <input
                   type="url"
@@ -361,6 +374,29 @@
             <label for="category-name" class="form-label">Nombre</label>
             <input type="text" class="form-control" id="category-name" maxlength="100" required />
             <div id="category-feedback" class="alert d-none mt-3" role="alert"></div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="btn btn-success">Crear</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: MARCA ===== -->
+  <div class="modal fade" id="marcaModal" tabindex="-1" aria-labelledby="marcaModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-sm">
+      <div class="modal-content">
+        <form id="marca-form">
+          <div class="modal-header">
+            <h5 class="modal-title" id="marcaModalLabel">Nueva marca</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+          </div>
+          <div class="modal-body">
+            <label for="marca-name" class="form-label">Nombre</label>
+            <input type="text" class="form-control" id="marca-name" maxlength="100" required />
+            <div id="marca-feedback" class="alert d-none mt-3" role="alert"></div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>

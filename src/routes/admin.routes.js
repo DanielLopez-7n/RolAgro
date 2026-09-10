@@ -13,6 +13,9 @@ const {
   setProductPublished,
   createCategory,
   deleteCategory,
+  listMarcas,
+  createMarca,
+  deleteMarca,
   listOrders,
   importInventory,
   listBatches,
@@ -40,6 +43,12 @@ router.delete("/products/:id", deleteProduct);
 router.get("/categories", getCategories);
 router.post("/categories", createCategory);
 router.delete("/categories/:id", deleteCategory);
+
+// Las marcas no tienen listado público: solo se administran desde acá y las
+// crea también la importación del ERP (find-or-create, ver marcas.service.js).
+router.get("/marcas", listMarcas);
+router.post("/marcas", createMarca);
+router.delete("/marcas/:id", deleteMarca);
 
 router.get("/orders", listOrders);
 

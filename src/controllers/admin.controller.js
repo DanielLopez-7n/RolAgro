@@ -1,5 +1,6 @@
 const productsService = require("../services/products.service");
 const categoriesService = require("../services/categories.service");
+const marcasService = require("../services/marcas.service");
 const ordersService = require("../services/orders.service");
 const inventoryImportService = require("../services/inventoryImport.service");
 const batchesService = require("../services/batches.service");
@@ -52,14 +53,21 @@ async function getProduct(req, res, next) {
 // POST /admin/api/products
 async function createProduct(req, res, next) {
   try {
-    const { name, description, price, category_id: categoryId, image_url: imageUrl } =
-      req.body || {};
+    const {
+      name,
+      description,
+      price,
+      category_id: categoryId,
+      marca_id: marcaId,
+      image_url: imageUrl,
+    } = req.body || {};
 
     const { id } = await productsService.create({
       name,
       description,
       price,
       categoryId,
+      marcaId,
       imageUrl,
     });
 
@@ -72,14 +80,21 @@ async function createProduct(req, res, next) {
 // PUT /admin/api/products/:id
 async function updateProduct(req, res, next) {
   try {
-    const { name, description, price, category_id: categoryId, image_url: imageUrl } =
-      req.body || {};
+    const {
+      name,
+      description,
+      price,
+      category_id: categoryId,
+      marca_id: marcaId,
+      image_url: imageUrl,
+    } = req.body || {};
 
     await productsService.update(req.params.id, {
       name,
       description,
       price,
       categoryId,
+      marcaId,
       imageUrl,
     });
 
@@ -127,6 +142,38 @@ async function createCategory(req, res, next) {
 async function deleteCategory(req, res, next) {
   try {
     await categoriesService.remove(req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// GET /admin/api/marcas
+// A diferencia de las categorías, no hay un listado público equivalente que
+// reutilizar: la marca no se muestra en el catálogo, solo se administra desde
+// el panel y la usa la importación del ERP.
+async function listMarcas(req, res, next) {
+  try {
+    res.json(await marcasService.findAll());
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST /admin/api/marcas
+async function createMarca(req, res, next) {
+  try {
+    const marca = await marcasService.create((req.body || {}).name);
+    res.status(201).json({ success: true, ...marca });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// DELETE /admin/api/marcas/:id
+async function deleteMarca(req, res, next) {
+  try {
+    await marcasService.remove(req.params.id);
     res.json({ success: true });
   } catch (err) {
     next(err);
@@ -195,6 +242,9 @@ module.exports = {
   setProductPublished,
   createCategory,
   deleteCategory,
+  listMarcas,
+  createMarca,
+  deleteMarca,
   listOrders,
   importInventory,
   listBatches,
