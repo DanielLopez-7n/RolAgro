@@ -287,3 +287,153 @@ test("la CSP permite los recursos que el sitio realmente usa", async () => {
   // "https:" el catálogo queda con todas las imágenes rotas.
   assert.match(csp, /img-src[^;]*https:/);
 });
+
+/* ==========================================================
+   Rutas hostiles
+   ==========================================================
+   Nada de esto es un caso de uso: es lo que llega cuando alguien juega con
+   la barra de direcciones o con curl. Casi todo ya se rechazaba antes de
+   escribir estos tests; están para que un cambio futuro no lo afloje sin
+   que nadie se entere.
+
+   Ninguno toca MySQL, y no es casualidad: cada :id pasa por parseId ANTES
+   de cualquier consulta, así que un id inválido corta en la validación.
+   ========================================================== */
+
+/** Todas las rutas del panel que reciben un :id, con su método. */
+const RUTAS_CON_ID = [
+  ["GET", (id) => `/admin/api/products/${id}`],
+  ["PUT", (id) => `/admin/api/products/${id}`],
+  ["DELETE", (id) => `/admin/api/products/${id}`],
+  ["PATCH", (id) => `/admin/api/products/${id}/publish`],
+  ["DELETE", (id) => `/admin/api/categories/${id}`],
+  ["DELETE", (id) => `/admin/api/marcas/${id}`],
+  ["DELETE", (id) => `/admin/api/batches/${id}`],
+];
+
+/** Lo que NO es un identificador, por más que venga en el lugar de uno. */
+const IDS_INVALIDOS = [
+  "-1",
+  "0",
+  "2.5",
+  "abc",
+  "null",
+  "undefined",
+  "1e3",
+  "%20",
+  "1%20OR%201=1",
+  "%2e%2e%2f%2e%2e%2fetc%2fpasswd", // traversal codificado
+];
+
+test("ningún :id inválido llega a la base de datos", async () => {
+  for (const [method, path] of RUTAS_CON_ID) {
+    for (const id of IDS_INVALIDOS) {
+      const response = await fetch(`${baseUrl}${path(id)}`, {
+        method,
+        headers: { ...ADMIN_AUTH, "Content-Type": "application/json" },
+        body: method === "GET" || method === "DELETE" ? undefined : "{}",
+      });
+
+      assert.equal(
+        response.status,
+        400,
+        `${method} ${path(id)} debería cortar con 400, respondió ${response.status}`
+      );
+      // El mensaje tiene que ser el de validación, no una fuga del motor.
+      const { error } = await response.json();
+      assert.match(error, /no es válido/, `${method} ${path(id)}: ${error}`);
+    }
+  }
+});
+
+test("un :id inválido se rechaza también sin sesión, y como 401", async () => {
+  // El orden importa: primero se pregunta quién sos y después si el dato
+  // sirve. Al revés, un anónimo podría distinguir ids válidos de inválidos.
+  const response = await fetch(`${baseUrl}/admin/api/products/-1`);
+  assert.equal(response.status, 401);
+});
+
+test("un cuerpo que no es JSON válido es culpa del cliente, no del servidor", async () => {
+  const response = await fetch(`${baseUrl}/admin/api/categories`, {
+    method: "POST",
+    headers: { ...ADMIN_AUTH, "Content-Type": "application/json" },
+    body: "{roto",
+  });
+
+  // Antes esto daba 500 y escribía un stack trace entero en el log del
+  // servidor: cualquiera podía llenar `pm2 logs` mandando basura.
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /JSON/i);
+});
+
+test("un cuerpo gigante se rechaza con 413, no con 500", async () => {
+  const response = await fetch(`${baseUrl}/admin/api/categories`, {
+    method: "POST",
+    headers: { ...ADMIN_AUTH, "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "x".repeat(200 * 1024) }), // el límite es 100kb
+  });
+
+  assert.equal(response.status, 413);
+  assert.match((await response.json()).error, /grande/i);
+});
+
+test("un producto sin nombre se rechaza antes de tocar la base", async () => {
+  // validate() corre las reglas de texto y precio ANTES de comprobar la
+  // categoría, que es la única que consulta MySQL.
+  const invalidos = [
+    { caso: "sin nombre", body: { name: "", price: 100, category_id: 1 } },
+    { caso: "precio negativo", body: { name: "Abono", price: -5, category_id: 1 } },
+    { caso: "precio no numérico", body: { name: "Abono", price: "gratis", category_id: 1 } },
+    { caso: "imagen con javascript:", body: { name: "Abono", price: 100, category_id: 1, image_url: "javascript:alert(1)" } },
+  ];
+
+  for (const { caso, body } of invalidos) {
+    const response = await fetch(`${baseUrl}/admin/api/products`, {
+      method: "POST",
+      headers: { ...ADMIN_AUTH, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    assert.equal(response.status, 400, `debería rechazar: ${caso}`);
+  }
+});
+
+test("una ruta inventada bajo /admin/api responde 404 en JSON, no el panel", async () => {
+  const response = await fetch(`${baseUrl}/admin/api/no-existe`, { headers: ADMIN_AUTH });
+
+  assert.equal(response.status, 404);
+  assert.match(response.headers.get("content-type") || "", /application\/json/);
+});
+
+test("los archivos del servidor no se alcanzan desde la carpeta pública", async () => {
+  // express.static ya normaliza y bloquea esto, pero el .env vive un nivel
+  // arriba de public/ y es justo lo que alguien intentaría leer.
+  const intentos = [
+    "/..%2f.env",
+    "/css/..%2f..%2f.env",
+    "/%2e%2e%2f%2e%2e%2fpackage.json",
+    "/..%5c..%5c.env", // separador de Windows
+  ];
+
+  for (const path of intentos) {
+    const response = await fetch(`${baseUrl}${path}`);
+    assert.equal(response.status, 404, `${path} no debería servir nada`);
+    const cuerpo = await response.text();
+    assert.doesNotMatch(cuerpo, /DB_PASSWORD|ADMIN_PASS|SESSION_SECRET/, `${path} filtró el .env`);
+  }
+});
+
+test("un método que la ruta no declara no cae en otra ruta parecida", async () => {
+  // El riesgo real: que un método no declarado se cuele en un handler
+  // vecino (ej. un DELETE en /api/products atendido por el GET).
+  const casos = [
+    ["DELETE", "/api/products"],
+    ["PUT", "/api/categories"],
+    ["POST", "/api/config"],
+    ["GET", "/api/orders"], // el checkout es solo POST
+  ];
+
+  for (const [method, path] of casos) {
+    const response = await fetch(`${baseUrl}${path}`, { method });
+    assert.equal(response.status, 404, `${method} ${path} debería ser 404`);
+  }
+});
