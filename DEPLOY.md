@@ -14,7 +14,8 @@ SSH; los que no, corren en tu máquina.
 - [ ] Rama `daniel` mergeada a `main` — se despliega desde `main`.
 - [ ] Credenciales reales a mano: SMTP (Gmail App Password), número de
       WhatsApp, usuario/clave que querés para `/admin` en producción
-      (no reutilices las de desarrollo).
+      (no reutilices las de desarrollo; la clave necesita 12 caracteres o
+      más).
 
 ## Fase 1 — Código (ya hecho en este repo)
 
@@ -132,6 +133,10 @@ desarrollo:
 - `ADMIN_USER`, `ADMIN_PASS` (credenciales nuevas, no las de desarrollo).
   La contraseña necesita 12 caracteres o más o el proceso no arranca; una
   frase larga es mejor que ocho caracteres con símbolos.
+- `SESSION_SECRET`: firma la cookie de sesión del panel. No se inventa a
+  mano, se genera **en el servidor** con `openssl rand -base64 32` y se
+  pega tal cual. Si algún día sospechás que alguien entró, cambiarla cierra
+  todas las sesiones abiertas de una.
 - `WHATSAPP_NUMBER`
 - `PORT=3000` (Nginx lo expone hacia afuera; no hace falta abrirlo en el
   firewall)
@@ -208,8 +213,12 @@ compartir el link funcionen). Reemplazar por el dominio real y redesplegar.
 - [ ] El carrito y el checkout de invitado funcionan y llega el correo del
       pedido.
 - [ ] El enlace de WhatsApp abre con el número correcto.
-- [ ] `https://tudominio.com/admin` pide credenciales (no queda abierto) y
-      el panel funciona con las credenciales de producción.
+- [ ] `https://tudominio.com/admin` redirige a `/admin/login` (no queda
+      abierto), se entra con las credenciales de producción, y el botón
+      "Salir" cierra la sesión y vuelve al formulario.
+- [ ] Con el certificado ya emitido, la cookie de sesión sale con el flag
+      `Secure`: en las herramientas del navegador (Application → Cookies),
+      `rolagro_admin` debe mostrar Secure, HttpOnly y SameSite=Strict.
 - [ ] `curl -I https://tudominio.com/api/products` varias veces seguidas
       dispara el rate limit por IP real (no agrupa a todos los visitantes) —
       confirma que `trust proxy` + los headers de Nginx están bien puestos.

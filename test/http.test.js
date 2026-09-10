@@ -18,12 +18,17 @@ const ExcelJS = require("exceljs");
 process.env.NODE_ENV = "test";
 process.env.ADMIN_USER = "admin-de-prueba";
 process.env.ADMIN_PASS = "clave-de-prueba";
+// Fija, para que los tokens de estos tests sean reproducibles. Sin esto,
+// session.js genera una clave al azar por proceso (ver getSecret).
+process.env.SESSION_SECRET = "clave-de-firma-solo-para-los-tests-01234";
 
 const app = require("../src/app");
 const pool = require("../src/config/db");
 
 let baseUrl;
 let server;
+/** Cookie de sesión válida, para no repetir el login en cada test de abajo. */
+let ADMIN_AUTH;
 
 test.before(async () => {
   // Puerto 0: el sistema asigna uno libre, así los tests no chocan con el
@@ -31,6 +36,8 @@ test.before(async () => {
   server = app.listen(0);
   await new Promise((resolve) => server.once("listening", resolve));
   baseUrl = `http://127.0.0.1:${server.address().port}`;
+
+  ADMIN_AUTH = { Cookie: cookieFrom(await postLogin("admin-de-prueba", "clave-de-prueba")) };
 });
 
 test.after(async () => {
@@ -40,9 +47,23 @@ test.after(async () => {
   await pool.end();
 });
 
-/** Credenciales en el formato que arma el navegador. */
-function basicAuthHeader(user, pass) {
-  return "Basic " + Buffer.from(`${user}:${pass}`).toString("base64");
+/**
+ * Manda el formulario de login tal como lo haría el navegador y devuelve la
+ * respuesta cruda (sin seguir el redirect, para poder mirarlo).
+ */
+function postLogin(user, pass) {
+  return fetch(`${baseUrl}/admin/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ user, pass }),
+    redirect: "manual",
+  });
+}
+
+/** Extrae el par "nombre=valor" de un Set-Cookie, listo para reenviar. */
+function cookieFrom(response) {
+  const header = response.headers.get("set-cookie") || "";
+  return header.split(";")[0];
 }
 
 test("GET /health responde ok", async () => {
@@ -52,15 +73,23 @@ test("GET /health responde ok", async () => {
   assert.deepEqual(await response.json(), { status: "ok" });
 });
 
-test("GET /admin sin credenciales pide autenticación", async () => {
-  const response = await fetch(`${baseUrl}/admin`);
+test("GET /admin sin sesión manda al login", async () => {
+  const response = await fetch(`${baseUrl}/admin`, { redirect: "manual" });
 
-  assert.equal(response.status, 401);
-  // Sin esta cabecera el navegador no muestra el diálogo de acceso.
-  assert.match(response.headers.get("www-authenticate") || "", /^Basic/);
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get("location"), "/admin/login");
 });
 
-test("GET /admin con credenciales incorrectas no entra", async () => {
+test("GET /admin/login se sirve sin sesión", async () => {
+  // Es la única ruta bajo /admin que no puede exigir sesión: si la exigiera,
+  // no habría forma de conseguir una.
+  const response = await fetch(`${baseUrl}/admin/login`);
+
+  assert.equal(response.status, 200);
+  assert.match(await response.text(), /<form[^>]+\/admin\/login/);
+});
+
+test("credenciales incorrectas no entregan sesión", async () => {
   const wrong = [
     ["admin-de-prueba", "clave-equivocada"],
     ["usuario-equivocado", "clave-de-prueba"],
@@ -68,25 +97,83 @@ test("GET /admin con credenciales incorrectas no entra", async () => {
   ];
 
   for (const [user, pass] of wrong) {
-    const response = await fetch(`${baseUrl}/admin`, {
-      headers: { Authorization: basicAuthHeader(user, pass) },
-    });
-    assert.equal(response.status, 401, `no debería entrar con ${user}:${pass}`);
+    const response = await postLogin(user, pass);
+    assert.equal(response.headers.get("location"), "/admin/login?error=1");
+    assert.equal(
+      response.headers.get("set-cookie"),
+      null,
+      `no debería emitir cookie con ${user}:${pass}`
+    );
   }
 });
 
-test("GET /admin con las credenciales correctas sirve el panel", async () => {
-  const response = await fetch(`${baseUrl}/admin`, {
-    headers: { Authorization: basicAuthHeader("admin-de-prueba", "clave-de-prueba") },
-  });
+test("las credenciales correctas entregan una cookie de sesión endurecida", async () => {
+  const response = await postLogin("admin-de-prueba", "clave-de-prueba");
+
+  assert.equal(response.headers.get("location"), "/admin");
+
+  const setCookie = response.headers.get("set-cookie") || "";
+  assert.match(setCookie, /^rolagro_admin=/);
+  // HttpOnly: ningún script de la página puede leerla (ni uno inyectado).
+  assert.match(setCookie, /HttpOnly/i);
+  // SameSite=Strict: el navegador no la manda desde otro sitio. Es lo que
+  // cierra el CSRF que reintrodujo pasar de Basic Auth a una cookie.
+  assert.match(setCookie, /SameSite=Strict/i);
+  // Path acotado: no viaja en las peticiones del catálogo público.
+  assert.match(setCookie, /Path=\/admin/i);
+  // Sin HTTPS no puede llevar Secure o la cookie no viajaría nunca; en
+  // producción detrás de Nginx, req.secure la activa sola (ver session.js).
+  assert.doesNotMatch(setCookie, /Secure/i);
+});
+
+test("con la cookie de sesión se entra al panel", async () => {
+  const cookie = cookieFrom(await postLogin("admin-de-prueba", "clave-de-prueba"));
+  const response = await fetch(`${baseUrl}/admin`, { headers: { Cookie: cookie } });
 
   assert.equal(response.status, 200);
   assert.match(await response.text(), /RolAgro/);
 });
 
-test("la API del panel también exige credenciales", async () => {
+test("una cookie manipulada no sirve", async () => {
+  const cookie = cookieFrom(await postLogin("admin-de-prueba", "clave-de-prueba"));
+  const [name, token] = cookie.split("=");
+  const [payload, signature] = token.split(".");
+
+  const forged = [
+    `${name}=${payload}.${signature.slice(0, -2)}xx`, // firma cambiada
+    `${name}=${Buffer.from('{"fp":"x","exp":99999999999999}').toString("base64url")}.${signature}`, // payload cambiado
+    `${name}=cualquier-cosa`,
+    `${name}=`,
+  ];
+
+  for (const value of forged) {
+    const response = await fetch(`${baseUrl}/admin`, {
+      headers: { Cookie: value },
+      redirect: "manual",
+    });
+    assert.equal(response.status, 302, `no debería aceptar: ${value.slice(0, 40)}`);
+  }
+});
+
+test("cerrar sesión borra la cookie", async () => {
+  const cookie = cookieFrom(await postLogin("admin-de-prueba", "clave-de-prueba"));
+  const response = await fetch(`${baseUrl}/admin/logout`, {
+    method: "POST",
+    headers: { Cookie: cookie },
+    redirect: "manual",
+  });
+
+  assert.equal(response.headers.get("location"), "/admin/login?salida=1");
+  // Se borra vaciándola y venciéndola: los atributos tienen que coincidir con
+  // los de la emisión o el navegador la trataría como otra cookie distinta.
+  assert.match(response.headers.get("set-cookie") || "", /^rolagro_admin=;/);
+});
+
+test("la API del panel también exige sesión", async () => {
   // No alcanza con proteger el HTML: la API es la que expone y modifica los
   // datos. Si esto devolviera 200, el panel entero estaría abierto.
+  // Acá se responde 401 en JSON y no un redirect: del otro lado hay un fetch,
+  // no una navegación, y admin.js traduce ese 401 en el salto al login.
   for (const path of [
     "/admin/api/products",
     "/admin/api/products/search",
@@ -103,9 +190,6 @@ test("la API del panel también exige credenciales", async () => {
     assert.equal(response.status, 401, `${path} debería exigir credenciales`);
   }
 });
-
-/** Cabecera de autorización correcta, para no repetirla en cada test de abajo. */
-const ADMIN_AUTH = { Authorization: basicAuthHeader("admin-de-prueba", "clave-de-prueba") };
 
 /** Arma un .xlsx en memoria con la forma del reporte real del ERP, sin filas de producto. */
 async function buildEmptyInventoryFile() {

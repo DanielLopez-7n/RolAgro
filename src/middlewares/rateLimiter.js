@@ -48,9 +48,35 @@ const adminLimiter = rateLimit({
 });
 
 /**
+ * Límite del formulario de login del panel.
+ *
+ * Es el más estricto de todos y por el motivo más directo: es el único
+ * endpoint donde alguien puede probar contraseñas. El adminLimiter de arriba
+ * no alcanza para esto —500 intentos cada 15 minutos son miles de pruebas por
+ * día— porque está dimensionado para una sesión de trabajo real, no para
+ * frenar a quien adivina.
+ *
+ * Diez por ventana no molesta a nadie: entrar al panel de verdad son una o
+ * dos veces por jornada, y la sesión dura 12 horas (ver session.js).
+ *
+ * Se cuentan todos los intentos, no solo los fallidos: acierto y error
+ * responden los dos con un redirect (302), así que express-rate-limit no
+ * puede distinguirlos por código de estado.
+ */
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  // Se responde con un redirect y no con el JSON por defecto: quien llega acá
+  // está mirando un formulario, y un volcado de JSON no le explica nada.
+  handler: (req, res) => res.redirect("/admin/login?error=limite"),
+});
+
+/**
  * Nota para el despliegue: si el sitio queda detrás de un proxy inverso
  * (Nginx, Render, Railway...), hay que habilitar app.set('trust proxy', 1)
  * en src/index.js. De lo contrario todas las peticiones se verán con la IP
  * del proxy y el límite se aplicaría a todos los visitantes en conjunto.
  */
-module.exports = { orderLimiter, apiLimiter, adminLimiter };
+module.exports = { orderLimiter, apiLimiter, adminLimiter, loginLimiter };

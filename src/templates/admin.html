@@ -31,9 +31,18 @@
         <i class="bi bi-flower1 fs-3"></i>
         RolAgro <span class="badge bg-success align-self-center">Panel</span>
       </span>
-      <a href="/" class="btn btn-outline-light btn-sm" target="_blank" rel="noopener">
-        <i class="bi bi-box-arrow-up-right"></i> Ver el sitio
-      </a>
+      <div class="d-flex align-items-center gap-2">
+        <a href="/" class="btn btn-outline-light btn-sm" target="_blank" rel="noopener">
+          <i class="bi bi-box-arrow-up-right"></i> Ver el sitio
+        </a>
+        <!-- Un <form> y no un enlace: la salida va por POST para que ninguna
+             página ajena pueda cerrarte la sesión con un <img> escondido. -->
+        <form method="post" action="/admin/logout" class="m-0">
+          <button type="submit" class="btn btn-outline-light btn-sm">
+            <i class="bi bi-box-arrow-right"></i> Salir
+          </button>
+        </form>
+      </div>
     </div>
   </nav>
 

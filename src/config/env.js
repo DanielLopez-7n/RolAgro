@@ -26,6 +26,16 @@ require("dotenv").config();
  */
 const MIN_ADMIN_PASS_LENGTH = 12;
 
+/**
+ * Largo mínimo de la clave que firma la cookie de sesión.
+ *
+ * A diferencia de la contraseña, esta no la escribe ni la recuerda nadie: se
+ * genera al azar una vez y se pega en el .env. Por eso el mínimo es alto —
+ * cualquier generador razonable pasa de largo. Si alguien pudiera adivinarla,
+ * podría fabricarse una cookie de sesión válida sin saber la contraseña.
+ */
+const MIN_SESSION_SECRET_LENGTH = 32;
+
 /** Variables sin las cuales el sitio no cumple su función en producción. */
 const CHECKS = [
   { name: "DB_USER", detail: "usuario de MySQL" },
@@ -52,6 +62,15 @@ const CHECKS = [
     isValid: (value) => value.length >= MIN_ADMIN_PASS_LENGTH,
   },
   {
+    name: "SESSION_SECRET",
+    // El comando va en el mensaje a propósito: quien lee esto está mirando
+    // `pm2 logs` con el sitio caído y necesita la solución, no el diagnóstico.
+    detail:
+      `clave que firma la cookie de sesión, mínimo ${MIN_SESSION_SECRET_LENGTH} ` +
+      "caracteres — generá una con: openssl rand -base64 32",
+    isValid: (value) => value.length >= MIN_SESSION_SECRET_LENGTH,
+  },
+  {
     name: "WHATSAPP_NUMBER",
     // wa.me solo acepta dígitos: un "+", un espacio o un guion rompen el
     // enlace sin dar ningún error visible.
@@ -67,6 +86,7 @@ const CHECKS = [
  */
 const PLACEHOLDERS = new Set([
   "cambia_esta_clave",
+  "genera_esta_clave_con_openssl_rand_base64_32",
   "tu_correo@gmail.com",
   "tu_app_password",
   "pedidos@rolagro.com",

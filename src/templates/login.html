@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Entrar al panel | RolAgro</title>
+  <meta name="theme-color" content="#1b4d1e" />
+  <!-- Esta pantalla no debe aparecer en Google: no es contenido del sitio. -->
+  <meta name="robots" content="noindex, nofollow" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+  <!--
+    Estilos propios y en la propia página: el login no carga Bootstrap ni
+    ninguna fuente externa. Es la pantalla más chica del sitio y la primera
+    que ve alguien que viene a trabajar — que cargue de una, sin esperar a
+    un CDN, vale más que reusar la grilla.
+  -->
+  <style>
+    :root {
+      --green: #2e7d32;
+      --green-dark: #1b4d1e;
+      --green-deep: #143a17;
+      --cream: #f7f5ef;
+      --ink: #1c231b;
+      --ink-muted: #5f6b5c;
+      --line: #d9d3c2;
+      --danger: #a33127;
+      --danger-bg: #f8e5e2;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      font-family: "Segoe UI", Roboto, system-ui, Arial, sans-serif;
+      color: var(--ink);
+      /* Verde profundo con una luz suave arriba: da profundidad sin necesitar
+         una foto de fondo que haya que cargar. */
+      background:
+        radial-gradient(ellipse 90% 60% at 50% -10%, #2c6b31 0%, transparent 70%),
+        var(--green-deep);
+    }
+
+    .card {
+      width: 100%;
+      max-width: 400px;
+      background: var(--cream);
+      border-radius: 10px;
+      padding: 36px 32px 28px;
+      box-shadow: 0 18px 50px -12px rgba(0, 0, 0, 0.45);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 9px;
+      margin-bottom: 4px;
+    }
+    .brand svg { width: 26px; height: 26px; flex: none; }
+    .brand span {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+      color: var(--green-dark);
+    }
+
+    h1 {
+      font-size: 15px;
+      font-weight: 600;
+      text-align: center;
+      color: var(--ink-muted);
+      margin: 0 0 26px;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: var(--ink);
+    }
+
+    input {
+      width: 100%;
+      font-size: 15px;
+      font-family: inherit;
+      color: var(--ink);
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      margin-bottom: 16px;
+    }
+
+    input:focus {
+      outline: none;
+      border-color: var(--green);
+      box-shadow: 0 0 0 3px rgba(46, 125, 50, 0.18);
+    }
+
+    button {
+      width: 100%;
+      font-size: 15px;
+      font-family: inherit;
+      font-weight: 600;
+      color: #fff;
+      background: var(--green);
+      border: 0;
+      border-radius: 6px;
+      padding: 11px;
+      cursor: pointer;
+      margin-top: 4px;
+    }
+    button:hover { background: var(--green-dark); }
+    button:focus-visible {
+      outline: 2px solid var(--green-dark);
+      outline-offset: 2px;
+    }
+
+    .alert {
+      font-size: 13.5px;
+      border-radius: 6px;
+      padding: 10px 12px;
+      margin-bottom: 18px;
+      border: 1px solid transparent;
+    }
+    .alert-error {
+      color: var(--danger);
+      background: var(--danger-bg);
+      border-color: var(--danger);
+    }
+    .alert-ok {
+      color: var(--green-dark);
+      background: #e4efe2;
+      border-color: var(--green);
+    }
+
+    .back {
+      display: block;
+      text-align: center;
+      margin-top: 22px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+      font-size: 13px;
+      color: var(--ink-muted);
+      text-decoration: none;
+    }
+    .back:hover { color: var(--green-dark); text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+  <main class="card">
+    <div class="brand">
+      <!-- Brote: la misma idea del ícono del sitio, dibujado acá para no
+           depender de una hoja de íconos entera por un solo símbolo. -->
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M12 21V11" stroke="#1b4d1e" stroke-width="2" stroke-linecap="round"/>
+        <path d="M12 13C12 9 9 6 5 6c0 4 3 7 7 7Z" fill="#2e7d32"/>
+        <path d="M12 15c0-3.3 2.7-6 6-6 0 3.3-2.7 6-6 6Z" fill="#6d4c2c"/>
+      </svg>
+      <span>RolAgro</span>
+    </div>
+
+    <h1>Panel de administración</h1>
+
+    <!-- Los avisos arrancan ocultos y los revela /js/login.js según el
+         parámetro de la URL. El formulario funciona igual sin JavaScript:
+         lo único que se pierde es el texto del error. -->
+    <div id="alert-error" class="alert alert-error" role="alert" hidden>
+      Usuario o contraseña incorrectos.
+    </div>
+    <div id="alert-limite" class="alert alert-error" role="alert" hidden>
+      Demasiados intentos seguidos. Esperá unos minutos y volvé a probar.
+    </div>
+    <div id="alert-salida" class="alert alert-ok" role="status" hidden>
+      Cerraste sesión correctamente.
+    </div>
+
+    <form method="post" action="/admin/login">
+      <label for="user">Usuario</label>
+      <input
+        type="text"
+        id="user"
+        name="user"
+        autocomplete="username"
+        autocapitalize="none"
+        spellcheck="false"
+        required
+        autofocus
+      />
+
+      <label for="pass">Contraseña</label>
+      <input
+        type="password"
+        id="pass"
+        name="pass"
+        autocomplete="current-password"
+        required
+      />
+
+      <button type="submit">Entrar</button>
+    </form>
+
+    <a class="back" href="/">Volver a la tienda</a>
+  </main>
+
+  <script src="/js/login.js"></script>
+</body>
+</html>

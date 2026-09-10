@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const basicAuth = require("../middlewares/basicAuth");
+const { requireSession } = require("../middlewares/session");
 const uploadExcelFile = require("../middlewares/uploadExcel");
 const { getCategories } = require("../controllers/products.controller");
 const {
@@ -23,9 +23,9 @@ const {
   deleteBatch,
 } = require("../controllers/admin.controller");
 
-// Todo el panel exige credenciales: se aplica al router entero para que una
-// ruta nueva no quede expuesta por olvido.
-router.use(basicAuth);
+// Todo el panel exige sesión: se aplica al router entero para que una ruta
+// nueva no quede expuesta por olvido.
+router.use(requireSession);
 
 // "/products/search" va antes que "/products/:id": si quedara después,
 // Express probaría primero la ruta con parámetro y "search" se colaría como

@@ -22,6 +22,7 @@ function validEnv(overrides = {}) {
     MAIL_TO: "duenia@rolagro.com",
     ADMIN_USER: "admin",
     ADMIN_PASS: "una-clave-larga-y-propia",
+    SESSION_SECRET: "3XxKq7mZp2vRt8sLbN4wYc6hJf0dQaEu",
     WHATSAPP_NUMBER: "573001234567",
     ...overrides,
   };
@@ -41,6 +42,7 @@ test("detecta cada variable faltante", () => {
     "MAIL_TO",
     "ADMIN_USER",
     "ADMIN_PASS",
+    "SESSION_SECRET",
     "WHATSAPP_NUMBER",
   ];
 
@@ -109,5 +111,15 @@ test("reporta todos los problemas juntos, no solo el primero", () => {
   // Importa para el deploy: que la dueña vea de una todo lo que falta,
   // en vez de arreglar de a uno y reintentar.
   const problems = findProblems({});
-  assert.equal(problems.length, 9);
+  assert.equal(problems.length, 10);
+});
+
+test("rechaza una clave de firma de sesión demasiado corta", () => {
+  // Una clave adivinable acá es tan grave como la contraseña: con ella se
+  // puede fabricar una cookie de sesión válida sin saber la contraseña.
+  const problems = findProblems(validEnv({ SESSION_SECRET: "corta" }));
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /^SESSION_SECRET tiene un formato inválido/);
+  // El mensaje trae el comando que la genera: se lee durante un deploy.
+  assert.match(problems[0], /openssl rand -base64 32/);
 });

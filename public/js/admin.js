@@ -2,7 +2,7 @@
    RolAgro — Panel de administración
    Gestiona productos y categorías y consulta los pedidos
    recibidos. Todas las llamadas van a /admin/api/*, protegido
-   con autenticación básica (ver src/middlewares/basicAuth.js).
+   por la cookie de sesión (ver src/middlewares/session.js).
    ========================================================== */
 
 (function () {
@@ -126,11 +126,22 @@
       ...options,
     });
 
+    // La sesión venció (dura 12 horas, ver session.js) o alguien la cerró
+    // desde otra pestaña. No tiene sentido mostrar "error 401" en cada tabla
+    // de la página: se va derecho al login, que es lo único que resuelve el
+    // problema. El `return` de una promesa que nunca se cumple corta acá la
+    // cadena de la llamada mientras el navegador cambia de página, para que
+    // no alcance a dibujar un error de un panel que ya no está.
+    if (res.status === 401) {
+      window.location.href = "/admin/login";
+      return new Promise(() => {});
+    }
+
     let data = null;
     try {
       data = await res.json();
     } catch (err) {
-      // Respuesta sin JSON (ej. un 401 servido como HTML por el navegador).
+      // Respuesta sin JSON (ej. una página de error servida como HTML).
       data = null;
     }
 

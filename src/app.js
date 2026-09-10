@@ -6,7 +6,8 @@ const helmet = require("helmet");
 const productsRoutes = require("./routes/products.routes");
 const ordersRoutes = require("./routes/orders.routes");
 const adminRoutes = require("./routes/admin.routes");
-const basicAuth = require("./middlewares/basicAuth");
+const authRoutes = require("./routes/auth.routes");
+const { requireSession } = require("./middlewares/session");
 const { apiLimiter, adminLimiter } = require("./middlewares/rateLimiter");
 const { notFound, errorHandler } = require("./middlewares/errorHandler");
 
@@ -58,6 +59,10 @@ if (process.env.NODE_ENV !== "test") {
 
 // Se acota el tamaño del cuerpo: un pedido legítimo son unos pocos kilobytes.
 app.use(express.json({ limit: "100kb" }));
+// El formulario de login es el único que manda un cuerpo de formulario en vez
+// de JSON (ver routes/auth.routes.js). El límite es mucho más chico: son dos
+// campos de texto.
+app.use(express.urlencoded({ extended: false, limit: "10kb" }));
 app.use(express.static(path.join(__dirname, "../public")));
 
 // Comprobación de salud para quien administre el proceso (PM2, un balanceador,
@@ -72,8 +77,13 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "templates", "index.html"));
 });
 
-// El panel pide credenciales antes de servir siquiera el HTML.
-app.get("/admin", basicAuth, (req, res) => {
+// Entrada y salida del panel. Es lo único bajo /admin que NO exige sesión:
+// si el login la exigiera, no habría forma de conseguir una.
+app.use("/admin", authRoutes);
+
+// El panel exige sesión antes de servir siquiera el HTML. Sin ella, el
+// visitante termina en /admin/login (ver middlewares/session.js).
+app.get("/admin", requireSession, (req, res) => {
   res.sendFile(path.join(__dirname, "templates", "admin.html"));
 });
 
