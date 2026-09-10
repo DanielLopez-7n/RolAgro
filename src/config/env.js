@@ -15,6 +15,17 @@ require("dotenv").config();
  * es un caso de uso legítimo.
  */
 
+/**
+ * Largo mínimo de la contraseña del panel.
+ *
+ * Solo se mide el largo, sin exigir mayúsculas ni símbolos: esas reglas
+ * empujan a claves cortas y retorcidas ("P@ss1!"), que se rompen antes que
+ * una frase larga. Y esta contraseña se escribe una vez en el .env del
+ * servidor y se guarda en un gestor — no hay que tipearla todos los días,
+ * así que no hay motivo para que sea corta.
+ */
+const MIN_ADMIN_PASS_LENGTH = 12;
+
 /** Variables sin las cuales el sitio no cumple su función en producción. */
 const CHECKS = [
   { name: "DB_USER", detail: "usuario de MySQL" },
@@ -32,7 +43,14 @@ const CHECKS = [
     isValid: (value) => value.includes("@"),
   },
   { name: "ADMIN_USER", detail: "usuario del panel /admin" },
-  { name: "ADMIN_PASS", detail: "contraseña del panel /admin" },
+  {
+    name: "ADMIN_PASS",
+    // El mínimo va dentro del `detail` porque es lo que se imprime cuando
+    // falla: "tiene un formato inválido" a secas no le dice a nadie qué
+    // corregir, y este mensaje se lee en `pm2 logs` con el sitio caído.
+    detail: `contraseña del panel /admin, mínimo ${MIN_ADMIN_PASS_LENGTH} caracteres`,
+    isValid: (value) => value.length >= MIN_ADMIN_PASS_LENGTH,
+  },
   {
     name: "WHATSAPP_NUMBER",
     // wa.me solo acepta dígitos: un "+", un espacio o un guion rompen el

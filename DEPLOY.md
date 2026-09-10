@@ -129,7 +129,9 @@ desarrollo:
 - `DB_HOST=localhost`, `DB_USER=rolagro`, `DB_PASSWORD=` (la del paso 2.4),
   `DB_NAME=rolagro_db`, `DB_SSL=false`
 - `SMTP_USER`, `SMTP_PASS` (App Password de Gmail), `MAIL_TO`
-- `ADMIN_USER`, `ADMIN_PASS` (credenciales nuevas, no las de desarrollo)
+- `ADMIN_USER`, `ADMIN_PASS` (credenciales nuevas, no las de desarrollo).
+  La contraseña necesita 12 caracteres o más o el proceso no arranca; una
+  frase larga es mejor que ocho caracteres con símbolos.
 - `WHATSAPP_NUMBER`
 - `PORT=3000` (Nginx lo expone hacia afuera; no hace falta abrirlo en el
   firewall)

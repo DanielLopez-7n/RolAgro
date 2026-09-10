@@ -66,6 +66,23 @@ test("detecta los valores de ejemplo sin completar", () => {
   assert.match(problems[0], /ADMIN_PASS todavía tiene el valor de ejemplo/);
 });
 
+test("rechaza una contraseña de panel demasiado corta", () => {
+  // El caso real que motivó el chequeo: "admin123" es la clave de desarrollo
+  // de este repo. No está en .env.example, así que la lista de placeholders
+  // no la ve, y hasta acá pasaba a producción sin que nada se quejara.
+  const problems = findProblems(validEnv({ ADMIN_PASS: "admin123" }));
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /^ADMIN_PASS tiene un formato inválido/);
+  // El mensaje tiene que decir cuánto falta: se lee en `pm2 logs` con el
+  // sitio caído, sin el código a mano.
+  assert.match(problems[0], /12 caracteres/);
+});
+
+test("el mínimo de la contraseña del panel corta justo en 12 caracteres", () => {
+  assert.equal(findProblems(validEnv({ ADMIN_PASS: "clave-de-11" })).length, 1);
+  assert.deepEqual(findProblems(validEnv({ ADMIN_PASS: "clave-de-12x" })), []);
+});
+
 test("rechaza números de WhatsApp que romperían el enlace wa.me", () => {
   // wa.me solo acepta dígitos: cualquiera de estos genera un enlace muerto
   // sin dar ningún error visible.
