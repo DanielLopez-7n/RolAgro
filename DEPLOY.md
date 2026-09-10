@@ -100,6 +100,53 @@ Confirmá que MySQL solo escucha en localhost (es el default en Ubuntu):
 $ sudo npm install -g pm2
 ```
 
+### 2.6 fail2ban para SSH
+
+El firewall del paso 2.2 decide **qué puertos** están abiertos, pero no mira
+quién entra por ellos. El 22 tiene que quedar abierto para poder trabajar, y
+un VPS con IP pública empieza a recibir intentos de login automatizados a las
+pocas horas de existir — miles por día, sin que nadie te conozca.
+
+fail2ban lee los logs, cuenta los intentos fallidos por IP y le pide al
+firewall que bloquee a quien insiste. Es la pieza que le falta a ufw.
+
+```
+$ sudo apt install -y fail2ban
+```
+
+La configuración por defecto **no se edita** (`jail.conf` se sobrescribe en
+cada actualización del paquete): los cambios propios van en `jail.local`, que
+fail2ban lee después y tiene prioridad.
+
+```
+$ sudo nano /etc/fail2ban/jail.local
+```
+
+```ini
+[sshd]
+enabled  = true
+maxretry = 5
+findtime = 10m
+bantime  = 1h
+```
+
+Se lee así: cinco fallos desde la misma IP dentro de diez minutos, y esa IP
+queda bloqueada una hora. No conviene poner `bantime = -1` (para siempre): el
+día que te equivoques de llave desde tu propia casa, te dejás afuera vos.
+
+```
+$ sudo systemctl enable --now fail2ban
+$ sudo fail2ban-client status sshd
+```
+
+Ese último comando tiene que listar la jaula `sshd` como activa. Si dice que
+no encuentra el log, es lo típico de Ubuntu 24.04, que dejó de escribir
+`/var/log/auth.log` y manda todo al journal de systemd: agregá
+`backend = systemd` dentro del bloque `[sshd]` y reiniciá el servicio.
+
+> La jaula del panel de administración se arma en la Fase 6, cuando la app
+> ya está corriendo y existe el archivo de log que necesita leer.
+
 ## Fase 3 — Llevar el código y las variables de entorno
 
 ### 3.1 Clonar el repo
@@ -233,6 +280,57 @@ compartir el link funcionen). Reemplazar por el dominio real y redesplegar.
   del script).
 - **Logs**: `pm2 logs rolagro` en vivo; `pm2 install pm2-logrotate` si los
   archivos de log crecen mucho.
+
+- **fail2ban para el panel** (completa la jaula de SSH del paso 2.6). El
+  límite de `rateLimiter.js` ya corta a los 10 intentos por cuarto de hora,
+  pero eso vive dentro del proceso: se reinicia con cada `pm2 reload` y no
+  hace nada contra alguien que vuelva mañana. fail2ban bloquea la IP a nivel
+  de firewall, antes de que la petición llegue a Node.
+
+  El detalle que hace falta resolver: `POST /admin/login` responde con un
+  redirect (302) tanto si la clave es correcta como si no, así que **desde el
+  log de Nginx los dos casos son idénticos**. Por eso la app escribe una línea
+  propia cuando el intento falla (ver `src/controllers/auth.controller.js`),
+  y el filtro lee esa:
+
+  ```
+  $ sudo nano /etc/fail2ban/filter.d/rolagro-panel.conf
+  ```
+
+  ```ini
+  [Definition]
+  datepattern = ^%%Y-%%m-%%dT%%H:%%M:%%S
+  failregex   = ^.*\[auth\] intento de acceso fallido al panel desde <HOST>$
+  ignoreregex =
+  ```
+
+  La jaula, agregada a `/etc/fail2ban/jail.local`:
+
+  ```ini
+  [rolagro-panel]
+  enabled  = true
+  filter   = rolagro-panel
+  logpath  = /home/deploy/.pm2/logs/rolagro-error.log
+  port     = http,https
+  maxretry = 5
+  findtime = 10m
+  bantime  = 1h
+  ```
+
+  El log es el de **error** y no el de salida porque la app usa
+  `console.warn`, que escribe en stderr; PM2 separa los dos archivos.
+
+  Para probarlo: entrá a `/admin/login` desde otro dispositivo y erralé la
+  clave seis veces. `sudo fail2ban-client status rolagro-panel` tiene que
+  mostrar esa IP en la lista de baneadas. Para sacarte del banco:
+  `sudo fail2ban-client set rolagro-panel unbanip TU_IP`.
+
+  **Revisá que la IP del log sea la real.** Si en
+  `pm2 logs rolagro --err` ves `127.0.0.1` o algo con el prefijo `::ffff:`,
+  la app está viendo a Nginx en vez de al cliente, y fail2ban terminaría
+  bloqueando al propio servidor. Eso significa que `trust proxy` o el
+  `X-Forwarded-For` de Nginx no están funcionando (ver `src/app.js` y
+  `deploy/nginx.rolagro.conf`).
 - **Actualizar el sitio** (deploy manual, alcanza para esta escala):
 
   ```
