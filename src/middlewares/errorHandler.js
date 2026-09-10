@@ -7,6 +7,35 @@ const AppError = require("../utils/AppError");
  * les basta con `next(err)` y aquí se decide qué ve el cliente.
  */
 
+/**
+ * Errores que levanta body-parser (el express.json/urlencoded de app.js) al
+ * leer el cuerpo de la petición. Los marca con un `type` propio.
+ *
+ * Son datos de entrada malos —culpa de quien llamó, no del servidor— pero sin
+ * esta tabla caían en el 500 genérico de abajo. Eso tenía dos costos: le
+ * respondía "error del servidor" a alguien que mandó mal los datos, y cada
+ * cuerpo malformado escribía un stack trace completo en los logs, así que
+ * cualquiera podía llenar `pm2 logs` mandando basura.
+ *
+ * Se traduce cada tipo a un mensaje propio en vez de reenviar el de la
+ * librería: los suyos vienen en inglés y con detalles internos ("Expected
+ * property name or '}' in JSON at position 1").
+ */
+const BODY_ERRORS = {
+  "entity.parse.failed": {
+    status: 400,
+    message: "El cuerpo de la petición no es JSON válido.",
+  },
+  "entity.too.large": {
+    status: 413,
+    message: "El cuerpo de la petición es demasiado grande.",
+  },
+  "encoding.unsupported": {
+    status: 415,
+    message: "La codificación del cuerpo de la petición no está soportada.",
+  },
+};
+
 /** Ninguna ruta coincidió. */
 function notFound(req, res) {
   // La API siempre responde JSON: el frontend hace res.json() sobre todo lo
@@ -29,6 +58,13 @@ function notFound(req, res) {
 function errorHandler(err, req, res, next) {
   if (err instanceof AppError && err.isOperational) {
     return res.status(err.statusCode).json({ error: err.message });
+  }
+
+  // Cuerpo ilegible o demasiado grande: es un dato de entrada malo, se
+  // responde como tal y no se ensucia el log del servidor.
+  const bodyError = err && BODY_ERRORS[err.type];
+  if (bodyError) {
+    return res.status(bodyError.status).json({ error: bodyError.message });
   }
 
   console.error(`Error no controlado en ${req.method} ${req.originalUrl}:`, err);

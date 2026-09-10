@@ -45,6 +45,21 @@ test("parseId acepta enteros positivos, vengan como número o texto", () => {
   assert.equal(parseId("42"), 42);
 });
 
+test("parseId rechaza las formas numéricas exóticas que Number() sí acepta", () => {
+  // Todas estas las convierte Number() sin quejarse: "1e3" da 1000, "0x10"
+  // da 16, "+5" da 5, "1.0" da 1. Como id no las escribió nadie a mano, y
+  // dejarlas pasar significaba consultar la base con lo que trajera la URL.
+  const exoticas = ["1e3", "0x10", "0b11", "+5", "1.0", "  12  ", "12\n"];
+
+  for (const value of exoticas) {
+    assert.throws(
+      () => parseId(value),
+      { statusCode: 400 },
+      `debería rechazar: ${JSON.stringify(value)}`
+    );
+  }
+});
+
 test("parseId rechaza cualquier cosa que no sea un entero positivo", () => {
   const invalid = [0, -1, 1.5, "abc", "", null, undefined, {}, [], NaN];
 
